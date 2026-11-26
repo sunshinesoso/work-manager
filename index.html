@@ -1565,7 +1565,7 @@ function doneTasks() {
 function doneRow(t) {
   var where = siteName(t.siteId) || projectName(t.projectId) || '';
   var when = t.completedAt ? ('완료 ' + fmtDot(t.completedAt)) : (t.due ? ('마감 ' + fmtDot(t.due)) : '');
-  return '<div class="list-row is-done" data-action="edit-task" data-id="' + t.id + '">'
+  return '<div class="list-row done-row" data-action="edit-task" data-id="' + t.id + '">'
     + '<span class="done-check">' + icon('check', 13) + '</span>'
     + '<span class="task-title" title="' + esc(t.title) + '">' + esc(t.title) + '</span>'
     + (where ? '<span class="done-where" title="' + esc(where) + '">' + esc(where) + '</span>' : '')
