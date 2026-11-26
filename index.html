@@ -4968,9 +4968,9 @@ function travelEditor(rep) {
     + rep.purposes.map(function (p, i) {
       return '<tr data-trv-purpose="' + i + '">'
         + '<td><select data-trv-purpose-pick="' + i + '" aria-label="프로젝트 선택">' + trvPickOptions(rep, i) + '</select></td>'
-        + '<td><input type="text" data-trv-purpose-field="no" data-i="' + i + '" value="' + esc(p.no) + '" placeholder="공사번호" aria-label="공사번호"></td>'
-        + '<td><input type="text" data-trv-purpose-field="client" data-i="' + i + '" value="' + esc(p.client) + '" placeholder="업체명" aria-label="업체명"></td>'
-        + '<td><input type="text" data-trv-purpose-field="work" data-i="' + i + '" value="' + esc(p.work) + '" placeholder="공사내용" aria-label="공사내용"></td>'
+        + '<td><input type="text" data-trv-purpose-field="no" data-i="' + i + '" value="' + esc(p.no) + '" title="' + esc(p.no) + '" placeholder="공사번호" aria-label="공사번호"></td>'
+        + '<td><input type="text" data-trv-purpose-field="client" data-i="' + i + '" value="' + esc(p.client) + '" title="' + esc(p.client) + '" placeholder="업체명" aria-label="업체명"></td>'
+        + '<td><input type="text" data-trv-purpose-field="work" data-i="' + i + '" value="' + esc(p.work) + '" title="' + esc(p.work) + '" placeholder="공사내용" aria-label="공사내용"></td>'
         + '<td class="num" data-trv-purpose-people="' + i + '">' + (str(p.no).trim() ? trvPeopleOfPurpose(t, p.no) : '-') + '</td>'
         + '<td class="num" data-trv-purpose-amount="' + i + '">' + (str(p.no).trim() ? (t.per[str(p.no).trim()] && t.per[str(p.no).trim()].amount ? won(t.per[str(p.no).trim()].amount) : '-') : '-') + '</td>'
         + '<td><button class="icon-sm danger" data-action="travel-del-purpose" data-i="' + i + '" aria-label="목적 삭제">' + icon('x', 14) + '</button></td>'
@@ -5328,6 +5328,7 @@ function exportTravelXlsx(id) {
   if (!rep) { toast('내보낼 정산서를 선택해 주세요.', 'alert'); return; }
   var d = travelExportData(rep);
   if (!d.rows.length) { toast('일자별 정산 내역이 비어 있습니다. 금액을 먼저 입력해 주세요.', 'alert'); return; }
+  if (!trvDates(rep).length) { toast('출장 날짜가 없습니다. 일자별 정산 내역의 월/일을 먼저 넣어 주세요.', 'alert'); return; }
   var name = trvFileName(rep);
   toast('엑셀 파일을 만드는 중입니다...');
   window.JSZip.loadAsync(window.TRAVEL_TEMPLATE_B64, { base64: true }).then(function (zip) {
