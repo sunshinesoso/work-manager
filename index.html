@@ -3805,7 +3805,8 @@ function exportLaborFindCSV(kind) {
   var cand = laborFindCandidate();
   if (!cand) { toast('프로젝트(공사)를 먼저 선택해 주세요.', 'alert'); return; }
   var res = laborFindResult(cand);
-  var range = (f.start || '') + '~' + (f.end || '');
+  var range = f.start && f.end ? f.start + '~' + f.end
+    : (f.start ? f.start + '이후' : (f.end ? f.end + '이전' : '전체기간'));
   var rows;
   if (kind === 'logs') {
     if (!res.logs.length) { toast('내보낼 작업내용이 없습니다.', 'alert'); return; }
