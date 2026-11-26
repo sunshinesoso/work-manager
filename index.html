@@ -3446,13 +3446,9 @@ function laborProjectCandidates() {
       if (c.abbr && cand.months[mk].indexOf(c.abbr) < 0) cand.months[mk].push(c.abbr);
     });
   });
-  /* 같은 공사명이 월마다 다른 키(프로젝트Id 유무·공사번호 변경)로 잡히면 하나로 합친다 */
-  var byName = {};
-  list = list.filter(function (cand) {
-    var n = laborNormKey(cand.name);
-    if (!n) return true;
-    var host = byName[n];
-    if (!host) { byName[n] = cand; return true; }
+  /* 같은 공사명이 월마다 다른 키(프로젝트Id 유무·공사번호 변경)로 잡히면 하나로 합친다.
+     단, 프로젝트Id가 서로 다른 공사는 이름이 같아도 합치지 않는다. */
+  function mergeCandidate(host, cand) {
     if (!host.projectId && cand.projectId) host.projectId = cand.projectId;
     if (cand.no) host.no = cand.no;
     if (cand.client) host.client = cand.client;
@@ -3460,12 +3456,33 @@ function laborProjectCandidates() {
       if (!host.months[mk]) { host.months[mk] = []; host.monthList.push(mk); }
       cand.months[mk].forEach(function (a) { if (host.months[mk].indexOf(a) < 0) host.months[mk].push(a); });
     });
-    return false;
+  }
+  var byName = {};
+  list.forEach(function (cand) {
+    var n = laborNormKey(cand.name);
+    if (!n) return;
+    (byName[n] = byName[n] || []).push(cand);
   });
+  var dropped = [];
+  Object.keys(byName).forEach(function (n) {
+    var group = byName[n];
+    var withId = group.filter(function (c) { return c.projectId; });
+    if (withId.length > 1) return; /* 서로 다른 프로젝트 — 이름이 같아도 별도 유지 */
+    var host = withId[0] || group[0];
+    group.forEach(function (c) {
+      if (c === host) return;
+      mergeCandidate(host, c);
+      dropped.push(c);
+    });
+  });
+  if (dropped.length) {
+    list = list.filter(function (c) { return dropped.indexOf(c) < 0; });
+  }
   /* 프로젝트관리에만 있는 프로젝트도 선택할 수 있게 추가 */
   arr(db.projects).forEach(function (p) {
     var dup = list.some(function (cand) {
       if (cand.projectId && cand.projectId === p.id) return true;
+      if (cand.projectId) return false; /* 다른 프로젝트 — 이름이 같아도 별도 */
       var n = laborNormKey(cand.name);
       return !!n && n === laborNormKey(p.name);
     });
@@ -3498,7 +3515,7 @@ function laborFindCandidate() {
 /* 그 달의 공사가 선택한 프로젝트와 같은 공사인지 (프로젝트Id → 공사명 → 공사번호+발주처 순) */
 function laborCompanyMatches(cand, c) {
   if (!cand || !c) return false;
-  if (cand.projectId && c.projectId && cand.projectId === c.projectId) return true;
+  if (cand.projectId && c.projectId) return cand.projectId === c.projectId;
   var nn = laborNormKey(cand.name), cn = laborNormKey(c.name);
   if (nn && cn && nn === cn) return true;
   var nno = laborNormKey(cand.no), cno = laborNormKey(c.no);
@@ -3511,7 +3528,7 @@ function laborCompanyMatches(cand, c) {
 }
 function laborLogMatches(cand, g) {
   if (!cand || !g) return false;
-  if (cand.projectId && g.projectId && cand.projectId === g.projectId) return true;
+  if (cand.projectId && g.projectId) return cand.projectId === g.projectId;
   var nn = laborNormKey(cand.name), gn = laborNormKey(g.name);
   if (nn && gn && nn === gn) return true;
   var nno = laborNormKey(cand.no), gno = laborNormKey(g.projectNo);
