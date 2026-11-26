@@ -493,6 +493,38 @@ ul{margin:0;padding:0;list-style:none}
 .paid-badge{font-size:10.5px;font-weight:800;color:#15803D;background:#E6F7EE;border-radius:6px;padding:2px 6px;white-space:nowrap}
 .labor-note{font-size:11.5px;color:#94A3B8;line-height:1.6;margin-top:8px;padding:0 4px}
 
+/* ============ labor: 기간·프로젝트별 조회 ============ */
+.labor-tabs{display:inline-flex;gap:4px;background:#EEF2F8;border:1px solid #E3E9F2;border-radius:12px;padding:4px;margin-bottom:16px}
+.labor-tab{appearance:none;-webkit-appearance:none;border:0;background:transparent;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:800;color:#64748B;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;transition:.15s}
+.labor-tab:hover{color:#1E3A5F}
+.labor-tab.on{background:#fff;color:#1D4ED8;box-shadow:0 1px 3px rgba(15,30,54,.14)}
+.labor-tab:focus-visible{outline:2px solid #9CBDF7;outline-offset:2px}
+.labor-find-bar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:16px 18px}
+.labor-find-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.labor-find-field > span{font-size:11.5px;font-weight:800;color:#64748B}
+.labor-find-field input[type="date"],.labor-find-field input[type="text"],.labor-find-field select{height:38px;border:1px solid #DCE4EF;border-radius:10px;padding:0 10px;font-size:13px;font-weight:700;color:#0F1E36;background:#fff;outline:none;font-family:inherit;box-sizing:border-box}
+.labor-find-field input[type="date"]{min-width:150px}
+.labor-find-field input:focus,.labor-find-field select:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.labor-find-field.grow{flex:1 1 280px}
+.labor-find-field select{width:100%;min-width:240px;max-width:520px;text-overflow:ellipsis}
+.labor-find-tilde{font-size:13px;font-weight:800;color:#94A3B8;padding-bottom:11px}
+.labor-presets{display:inline-flex;gap:6px;flex-wrap:wrap}
+.labor-presets .btn{height:38px;font-size:12px;padding:0 11px;border-color:#DCE4EF}
+.labor-presets .btn.on{background:#EEF4FE;border-color:#BFD5F7;color:#1D4ED8}
+.labor-find-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 18px;border-top:1px dashed #E7EDF5;background:#FBFCFE;font-size:11.5px;color:#64748B;line-height:1.7}
+.labor-find-status b{color:#1D4ED8;font-weight:800}
+.labor-find-status .warn{color:#B45309;font-weight:800}
+.labor-days summary{cursor:pointer;font-size:12px;color:#334155;font-weight:700;list-style:none;white-space:normal}
+.labor-days summary::-webkit-details-marker{display:none}
+.labor-days summary::before{content:'▸';display:inline-block;color:#94A3B8;margin-right:4px;transition:.15s}
+.labor-days[open] summary::before{transform:rotate(90deg)}
+.labor-days[open] summary{color:#1D4ED8;margin-bottom:5px}
+.labor-days-list{font-size:11.5px;color:#475569;line-height:1.75;max-height:168px;overflow:auto;border-left:2px solid #DBE5F2;padding-left:9px}
+.labor-days-list b{color:#1D4ED8;font-weight:800}
+.labor-table td.wrap{white-space:normal;min-width:190px}
+.labor-table tfoot td{background:#F8FAFC;font-weight:800;border-top:1px solid #E2E8F0}
+.labor-rate-warn{font-size:10.5px;font-weight:800;color:#B45309;background:#FEF3E2;border-radius:6px;padding:2px 6px;white-space:nowrap}
+
 /* ============ responsive ============ */
 @media (max-width:1480px){
   .banner-art{width:200px;opacity:.85}
@@ -579,6 +611,16 @@ ul{margin:0;padding:0;list-style:none}
   .bulk-bar{gap:8px;padding:8px 11px}
   .labor-kpi .v{font-size:17px}
   .labor-bar .btn{flex:1 1 auto}
+  .labor-tabs{display:flex;width:100%}
+  .labor-tab{flex:1 1 auto;justify-content:center;padding:9px 10px;font-size:12.5px}
+  .labor-find-bar{padding:13px 14px;gap:10px}
+  .labor-find-field{flex:1 1 100%}
+  .labor-find-field input[type="date"]{width:100%}
+  .labor-find-field select{max-width:none}
+  .labor-find-tilde{display:none}
+  .labor-presets{width:100%}
+  .labor-presets .btn{flex:1 1 auto;padding:0 8px}
+  .labor-find-status{padding:10px 14px}
 }
 @media print{
   .sidebar,.topbar,.sidebar-backdrop,#toastRoot{display:none !important}
@@ -1002,6 +1044,8 @@ var ui = {
   sel: { tasks: {}, projects: {}, sites: {}, docs: {}, events: {} },
   laborMonth: null,
   laborDayKey: null,
+  laborTab: 'ledger',
+  laborFind: null,
   laborSel: {}
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
@@ -2886,7 +2930,8 @@ function normLaborCompany(c) {
     client: str(c.client).slice(0, 60),
     abbr: str(c.abbr).slice(0, 4),
     name: str(c.name).slice(0, 120),
-    memo: str(c.memo).slice(0, 200)
+    memo: str(c.memo).slice(0, 200),
+    projectId: safeRef(c.projectId)
   };
 }
 function normLaborRow(r) {
@@ -2914,7 +2959,8 @@ function normLaborLog(l) {
     client: str(l.client).slice(0, 60),
     name: str(l.name).slice(0, 120),
     work: str(l.work).slice(0, 300),
-    done: !!l.done
+    done: !!l.done,
+    projectId: safeRef(l.projectId)
   };
 }
 function normalizeLabor(p) {
@@ -3131,7 +3177,19 @@ function laborKpi(label, value, iconName, tone) {
   return '<div class="labor-kpi"><div class="k">' + icon(iconName || 'clipboard', 13) + ' ' + esc(label) + '</div>'
     + '<div class="v">' + value + '</div></div>';
 }
+function laborTabs() {
+  var tab = ui.laborTab === 'find' ? 'find' : 'ledger';
+  return '<div class="labor-tabs" role="tablist" aria-label="노무비 대장 보기 방식">'
+    + '<button type="button" role="tab" aria-selected="' + (tab === 'ledger' ? 'true' : 'false') + '"'
+    + ' class="labor-tab' + (tab === 'ledger' ? ' on' : '') + '" data-action="labor-tab" data-tab="ledger">'
+    + icon('clipboard', 15) + ' 월별 대장 작성</button>'
+    + '<button type="button" role="tab" aria-selected="' + (tab === 'find' ? 'true' : 'false') + '"'
+    + ' class="labor-tab' + (tab === 'find' ? ' on' : '') + '" data-action="labor-tab" data-tab="find">'
+    + icon('search', 15) + ' 프로젝트별 기간 조회</button>'
+    + '</div>';
+}
 function viewLabor() {
+  if (ui.laborTab === 'find') return laborTabs() + viewLaborFind();
   if (!ui.laborMonth) ui.laborMonth = currentMonthKey();
   var m = laborMonth();
   var t = laborTotals(m);
@@ -3162,7 +3220,7 @@ function viewLabor() {
     + '<div class="v" style="display:flex;align-items:center;gap:10px">' + (m.tax ? '적용 중' : '적용 안 함')
     + '<button class="btn btn-sm ' + (m.tax ? 'btn-ghost' : 'btn-primary') + '" data-action="labor-tax">' + (m.tax ? '끄기' : '켜기') + '</button></div></div>'
     + '</div>';
-  return head + kpis
+  return laborTabs() + head + kpis
     + (warns.length ? '<div class="labor-note" style="margin-bottom:10px">※ ' + esc(warns.join(' ')) + '</div>' : '')
     + laborCompanyCard(m, t) + laborWorkerCard(m) + laborAttendanceCard(m) + laborLogCard(m);
 }
@@ -3342,6 +3400,418 @@ function laborLogCard(m) {
     + body + '</div>';
 }
 
+/* =========================================================
+   노무비 대장 — 기간·프로젝트별 통합조회
+   ========================================================= */
+function laborMonthRange(key) {
+  var k = str(key) || currentMonthKey();
+  return { start: k + '-01', end: k + '-' + pad2(laborDaysInMonth(k)) };
+}
+function laborFindState() {
+  if (!ui.laborFind || typeof ui.laborFind !== 'object') {
+    var r = laborMonthRange(ui.laborMonth || currentMonthKey());
+    ui.laborFind = { start: r.start, end: r.end, project: '', preset: 'month' };
+  }
+  var f = ui.laborFind;
+  if (typeof f.start !== 'string') f.start = '';
+  if (typeof f.end !== 'string') f.end = '';
+  if (typeof f.project !== 'string') f.project = '';
+  return f;
+}
+/* 공사명 비교용: 공백 제거 + 소문자 */
+function laborNormKey(v) { return str(v).replace(/\s+/g, '').toLowerCase(); }
+function laborFileSafe(v) {
+  return str(v).replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 40) || '프로젝트';
+}
+
+/* 노무비 대장 모든 월의 공사 + 프로젝트관리 프로젝트를 하나의 목록으로 통합 */
+function laborProjectCandidates() {
+  var list = [], index = {};
+  Object.keys(labor.months).sort().forEach(function (mk) {
+    arr(labor.months[mk].companies).forEach(function (c) {
+      if (!c.name && !c.no && !c.client) return;
+      var key = c.projectId ? 'p:' + c.projectId
+        : (laborNormKey(c.name) ? 'n:' + laborNormKey(c.name)
+          : (laborNormKey(c.no) ? 'o:' + laborNormKey(c.no) : 'c:' + laborNormKey(c.client)));
+      var cand = index[key];
+      if (!cand) {
+        cand = index[key] = { key: key, projectId: '', no: '', name: '', client: '', months: {}, monthList: [] };
+        list.push(cand);
+      }
+      if (c.projectId && !cand.projectId) cand.projectId = c.projectId;
+      if (c.name) cand.name = c.name;
+      if (c.no) cand.no = c.no;
+      if (c.client) cand.client = c.client;
+      if (!cand.months[mk]) { cand.months[mk] = []; cand.monthList.push(mk); }
+      if (c.abbr && cand.months[mk].indexOf(c.abbr) < 0) cand.months[mk].push(c.abbr);
+    });
+  });
+  /* 같은 공사명이 월마다 다른 키(프로젝트Id 유무·공사번호 변경)로 잡히면 하나로 합친다 */
+  var byName = {};
+  list = list.filter(function (cand) {
+    var n = laborNormKey(cand.name);
+    if (!n) return true;
+    var host = byName[n];
+    if (!host) { byName[n] = cand; return true; }
+    if (!host.projectId && cand.projectId) host.projectId = cand.projectId;
+    if (cand.no) host.no = cand.no;
+    if (cand.client) host.client = cand.client;
+    Object.keys(cand.months).forEach(function (mk) {
+      if (!host.months[mk]) { host.months[mk] = []; host.monthList.push(mk); }
+      cand.months[mk].forEach(function (a) { if (host.months[mk].indexOf(a) < 0) host.months[mk].push(a); });
+    });
+    return false;
+  });
+  /* 프로젝트관리에만 있는 프로젝트도 선택할 수 있게 추가 */
+  arr(db.projects).forEach(function (p) {
+    var dup = list.some(function (cand) {
+      if (cand.projectId && cand.projectId === p.id) return true;
+      var n = laborNormKey(cand.name);
+      return !!n && n === laborNormKey(p.name);
+    });
+    if (dup) return;
+    var key = 'p:' + p.id;
+    if (index[key]) return;
+    var cand = { key: key, projectId: p.id, no: '', name: p.name, client: p.client, months: {}, monthList: [] };
+    index[key] = cand;
+    list.push(cand);
+  });
+  list.sort(function (a, b) {
+    return str(a.name || a.client).localeCompare(str(b.name || b.client), 'ko');
+  });
+  return list;
+}
+function laborCandidateLabel(c) {
+  var head = (c.no ? '[' + c.no + '] ' : '') + (c.name || c.client || '(이름 없음)');
+  if (c.client && c.client !== c.name) head += ' (' + c.client + ')';
+  var n = c.monthList.length;
+  if (n) head += ' · ' + (n > 1 ? n + '개월' : monthLabelAdaptive(c.monthList[0]));
+  return head;
+}
+function laborFindCandidate() {
+  var f = laborFindState();
+  if (!f.project) return null;
+  var list = laborProjectCandidates();
+  for (var i = 0; i < list.length; i++) { if (list[i].key === f.project) return list[i]; }
+  return null;
+}
+/* 그 달의 공사가 선택한 프로젝트와 같은 공사인지 (프로젝트Id → 공사명 → 공사번호+발주처 순) */
+function laborCompanyMatches(cand, c) {
+  if (!cand || !c) return false;
+  if (cand.projectId && c.projectId && cand.projectId === c.projectId) return true;
+  var nn = laborNormKey(cand.name), cn = laborNormKey(c.name);
+  if (nn && cn && nn === cn) return true;
+  var nno = laborNormKey(cand.no), cno = laborNormKey(c.no);
+  var nc = laborNormKey(cand.client), cc = laborNormKey(c.client);
+  var sameClient = !!(nc && cc && nc === cc);
+  /* 공사번호는 월마다 새로 매기는 경우가 있어 발주처까지 같을 때만 같은 공사로 본다 */
+  if (nno && cno && nno === cno && (sameClient || !nn || !cn)) return true;
+  if (!nn && !cn && sameClient) return true;
+  return false;
+}
+function laborLogMatches(cand, g) {
+  if (!cand || !g) return false;
+  if (cand.projectId && g.projectId && cand.projectId === g.projectId) return true;
+  var nn = laborNormKey(cand.name), gn = laborNormKey(g.name);
+  if (nn && gn && nn === gn) return true;
+  var nno = laborNormKey(cand.no), gno = laborNormKey(g.projectNo);
+  if (nno && gno && nno === gno) return true;
+  return false;
+}
+/* 출근일수 기준 세금 공제 (laborRowCalc와 같은 식) */
+function laborRangeDeduct(rate, att) {
+  if (!(rate > 0) || !(att > 0)) return 0;
+  var raw = Math.max(0, (rate - 100000) * 0.036 * att);
+  var local = Math.floor(raw * 0.1 / 10) * 10;
+  return Math.round(raw + local);
+}
+function laborFindResult(cand) {
+  var f = laborFindState();
+  var res = {
+    start: f.start, end: f.end, workers: [], logs: [], months: [],
+    totals: { workers: 0, att: 0, hours: 0, gross: 0, deduct: 0, net: 0 },
+    badRange: !!(f.start && f.end && f.start > f.end), rateZero: false, stamp: ''
+  };
+  if (!cand || res.badRange) return res;
+  var wmap = {};
+  Object.keys(labor.months).sort().forEach(function (mk) {
+    var m = labor.months[mk];
+    var matched = arr(m.companies).filter(function (c) { return laborCompanyMatches(cand, c); });
+    arr(m.logs).forEach(function (g) {
+      if (f.start && g.date < f.start) return;
+      if (f.end && g.date > f.end) return;
+      if (!laborLogMatches(cand, g)) return;
+      res.logs.push({ log: g, month: mk });
+    });
+    if (!matched.length) return;
+    var abbrs = {};
+    matched.forEach(function (c) { if (c.abbr) abbrs[c.abbr] = true; });
+    var dim = laborDaysInMonth(mk);
+    var monthRow = { key: mk, abbrs: Object.keys(abbrs), hours: 0, att: 0, gross: 0, workers: 0 };
+    arr(m.rows).forEach(function (row) {
+      var w = laborWorker(row.workerId);
+      if (!w) return;
+      var rate = Math.max(0, Number(w.rate) || 0);
+      var hours = 0, att = 0, days = [];
+      for (var d = 1; d <= dim; d++) {
+        var x = row.days[String(d)];
+        if (!x) continue;
+        var v = Number(x.v) || 0;
+        if (v <= 0) continue;
+        if (!x.c || !abbrs[x.c]) continue;
+        var iso = mk + '-' + pad2(d);
+        if (f.start && iso < f.start) continue;
+        if (f.end && iso > f.end) continue;
+        hours += v; att++;
+        days.push({ iso: iso, v: v, abbr: x.c });
+      }
+      if (hours <= 0) return;
+      var rec = wmap[row.workerId];
+      if (!rec) {
+        rec = wmap[row.workerId] = {
+          workerId: row.workerId, name: w.name, phone: w.phone, rate: rate,
+          rateMin: rate, rateMax: rate, hours: 0, att: 0, gross: 0, deduct: 0, net: 0,
+          days: [], months: []
+        };
+      }
+      var amount = Math.round(hours * rate);
+      var deduct = m.tax ? laborRangeDeduct(rate, att) : 0;
+      rec.months.push({ key: mk, hours: hours, att: att, gross: amount, deduct: deduct });
+      rec.hours += hours; rec.att += att; rec.gross += amount; rec.deduct += deduct;
+      rec.days = rec.days.concat(days);
+      if (rate < rec.rateMin) rec.rateMin = rate;
+      if (rate > rec.rateMax) rec.rateMax = rate;
+      monthRow.hours += hours; monthRow.att += att; monthRow.gross += amount; monthRow.workers++;
+    });
+    if (monthRow.hours > 0) res.months.push(monthRow);
+  });
+  res.workers = Object.keys(wmap).map(function (k) { return wmap[k]; });
+  res.workers.forEach(function (r) {
+    r.net = r.gross - r.deduct;
+    r.days.sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+    if (!r.rate) res.rateZero = true;
+  });
+  res.workers.sort(function (a, b) { return str(a.name).localeCompare(str(b.name), 'ko'); });
+  res.logs.sort(function (a, b) { return a.log.date < b.log.date ? -1 : a.log.date > b.log.date ? 1 : 0; });
+  res.workers.forEach(function (r) {
+    res.totals.att += r.att; res.totals.hours += r.hours;
+    res.totals.gross += r.gross; res.totals.deduct += r.deduct; res.totals.net += r.net;
+  });
+  res.totals.workers = res.workers.length;
+  return res;
+}
+function laborFindRangeText(f) {
+  f = f || laborFindState();
+  if (f.start && f.end) return f.start + ' ~ ' + f.end;
+  if (f.start) return f.start + ' 이후';
+  if (f.end) return f.end + ' 이전';
+  return '전체 기간';
+}
+function laborDayLabel(iso) { return str(iso).slice(5).replace('-', '/'); }
+function laborDaysCell(r) {
+  if (!r.days.length) return '<span class="muted">-</span>';
+  function one(d) { return laborDayLabel(d.iso) + '(' + trimNum(d.v) + ')'; }
+  var head = r.days.slice(0, 3).map(one).join(', ');
+  if (r.days.length > 3) head += ' 외 ' + (r.days.length - 3) + '일';
+  var list = r.days.map(function (d) {
+    var dt = parseISO(d.iso);
+    return '<div>' + esc(d.iso) + (dt ? ' (' + WEEKDAYS[dt.getDay()] + ')' : '') + ' · <b>' + trimNum(d.v) + '공수</b>' + (d.abbr ? ' · ' + esc(d.abbr) : '') + '</div>';
+  }).join('');
+  return '<details class="labor-days"><summary title="' + esc(r.days.map(one).join(', ')) + '">' + esc(head) + '</summary>'
+    + '<div class="labor-days-list">' + list + '</div></details>';
+}
+function viewLaborFind() {
+  var f = laborFindState();
+  var cands = laborProjectCandidates();
+  var cand = laborFindCandidate();
+  if (!cand && f.project) { f.project = ''; cands = laborProjectCandidates(); }
+  var res = laborFindResult(cand);
+  var presetBtns = [['month', '이번 달'], ['3m', '최근 3개월'], ['year', '올해 전체'], ['all', '전체 기간']]
+    .map(function (p) {
+      return '<button type="button" class="btn btn-ghost' + (f.preset === p[0] ? ' on' : '') + '" data-action="labor-find-preset" data-preset="' + p[0] + '">' + p[1] + '</button>';
+    }).join('');
+  var pairs = [['', cands.length ? '프로젝트(공사) 선택 (' + cands.length + ')' : '등록된 프로젝트·공사가 없습니다']]
+    .concat(cands.map(function (c) { return [c.key, laborCandidateLabel(c)]; }));
+  var filter = '<div class="card labor-sec" style="margin-top:0">'
+    + '<div class="labor-find-bar">'
+    + '<label class="labor-find-field"><span>시작일</span><input type="date" value="' + esc(f.start) + '" data-action="labor-find-date" data-role="start" aria-label="조회 시작일"></label>'
+    + '<span class="labor-find-tilde">~</span>'
+    + '<label class="labor-find-field"><span>종료일</span><input type="date" value="' + esc(f.end) + '" data-action="labor-find-date" data-role="end" aria-label="조회 종료일"></label>'
+    + '<div class="labor-find-field"><span>빠른 기간</span><div class="labor-presets">' + presetBtns + '</div></div>'
+    + '<div class="labor-find-field grow"><span>프로젝트(공사)</span><select data-action="labor-find-project" aria-label="프로젝트(공사) 선택"'
+    + (cands.length ? '' : ' disabled') + '>' + options(pairs, f.project) + '</select></div>'
+    + '</div>';
+  var matchText = '';
+  if (res.months.length) {
+    matchText = res.months.map(function (m) {
+      return '<b>' + esc(monthLabelFull(m.key)) + '</b> ' + esc(m.abbrs.join('/') || '-') + ' <span class="muted">(' + trimNum(m.hours) + '공수)</span>';
+    }).join(' · ');
+  }
+  var statusBits = ['<span>조회 기간 <b>' + esc(laborFindRangeText(f)) + '</b></span>'];
+  if (cand) statusBits.push('<span>프로젝트 <b>' + esc(cand.name || cand.client) + '</b>' + (cand.no ? ' <span class="muted">[' + esc(cand.no) + ']</span>' : '') + '</span>');
+  if (matchText) statusBits.push('<span>매칭된 월별 공사 : ' + matchText + '</span>');
+  if (res.badRange) statusBits.push('<span class="warn">시작일이 종료일보다 늦습니다.</span>');
+  if (res.rateZero) statusBits.push('<span class="warn">노임단가가 0원인 근로자가 있어 노무비가 0원으로 계산됩니다.</span>');
+  filter += '<div class="labor-find-status">' + statusBits.join('<span class="muted">·</span>') + '</div></div>';
+
+  var kpis = '<div class="labor-kpis">'
+    + laborKpi('투입 인원', res.totals.workers + ' <small>명</small>', 'users')
+    + laborKpi('총 투입 일수', res.totals.att + ' <small>일</small>', 'calendar')
+    + laborKpi('총 공수', trimNum(res.totals.hours) + ' <small>공수</small>', 'clock')
+    + laborKpi('총 노무비 합계', won(res.totals.gross), 'clipboard')
+    + '</div>';
+
+  var rows = res.workers.map(function (r, i) {
+    var rateTxt = r.rate
+      ? Number(r.rate).toLocaleString('ko-KR')
+      : '<span class="labor-rate-warn">단가 미등록</span>';
+    return '<tr>'
+      + '<td class="num">' + (i + 1) + '</td>'
+      + '<td class="nm">' + esc(r.name) + '</td>'
+      + '<td class="nowrap">' + (r.phone ? esc(r.phone) : '<span class="muted">-</span>') + '</td>'
+      + '<td class="num">' + r.att + '</td>'
+      + '<td class="num">' + trimNum(r.hours) + '</td>'
+      + '<td class="num">' + rateTxt + '</td>'
+      + '<td class="num">' + Number(r.gross).toLocaleString('ko-KR') + '</td>'
+      + '<td class="num">' + Number(r.net).toLocaleString('ko-KR') + '</td>'
+      + '<td class="wrap">' + laborDaysCell(r) + '</td>'
+      + '</tr>';
+  }).join('');
+  var workerBody;
+  if (!cands.length) {
+    workerBody = '<div class="labor-empty">프로젝트관리나 노무비 대장에 공사를 먼저 등록해 주세요.</div>';
+  } else if (!cand) {
+    workerBody = '<div class="labor-empty">프로젝트(공사)를 선택하면 기간 안에 근무한 일용직을 한 번에 모아 보여줍니다.</div>';
+  } else if (res.badRange) {
+    workerBody = '<div class="labor-empty">시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.</div>';
+  } else if (!res.workers.length) {
+    workerBody = '<div class="labor-empty">' + esc(laborFindRangeText(f)) + ' 기간에 이 프로젝트(공사)의 출근 기록이 없습니다.</div>';
+  } else {
+    workerBody = '<div class="table-wrap"><table class="labor-table" style="min-width:1020px"><thead><tr>'
+      + '<th>순번</th><th>성명</th><th>연락처</th><th class="num">투입 일수</th><th class="num">총 공수</th><th class="num">노임단가</th>'
+      + '<th class="num">총 노무비(원)</th><th class="num">실지급(원)</th><th>근무 일자 상세</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right">합계</td>'
+      + '<td class="num">' + res.totals.att + '</td>'
+      + '<td class="num">' + trimNum(res.totals.hours) + '</td><td></td>'
+      + '<td class="num">' + Number(res.totals.gross).toLocaleString('ko-KR') + '</td>'
+      + '<td class="num">' + Number(res.totals.net).toLocaleString('ko-KR') + '</td><td></td>'
+      + '</tr></tfoot></table></div>';
+  }
+  var workerCard = '<div class="card labor-sec">'
+    + '<div class="labor-sec-head"><h3>' + icon('users', 17) + ' 해당 프로젝트 근무 일용직</h3>'
+    + '<span class="sub">' + res.workers.length + '명 · 모든 월 합산</span>'
+    + '<button class="btn btn-ghost btn-sm" data-action="labor-find-csv-workers"' + (res.workers.length ? '' : ' disabled') + '>'
+    + icon('download', 14) + ' CSV 다운로드</button></div>'
+    + workerBody
+    + (res.totals.deduct ? '<div class="labor-note">※ 노무비는 세전 기준입니다. 이 기간 총 공제 ' + won(res.totals.deduct) + ' · 실지급 ' + won(res.totals.net) + '</div>' : '')
+    + '</div>';
+
+  var logRows = res.logs.map(function (it, i) {
+    var g = it.log;
+    var dt = parseISO(g.date);
+    return '<tr>'
+      + '<td class="num">' + (i + 1) + '</td>'
+      + '<td class="nowrap">' + esc(g.date) + (dt ? ' (' + WEEKDAYS[dt.getDay()] + ')' : '') + '</td>'
+      + '<td class="nowrap">' + (g.projectNo ? esc(g.projectNo) : '<span class="muted">-</span>') + '</td>'
+      + '<td class="nowrap">' + (g.client ? esc(g.client) : '<span class="muted">-</span>') + '</td>'
+      + '<td>' + (g.name ? esc(g.name) : '<span class="muted">-</span>') + '</td>'
+      + '<td class="wrap" style="max-width:360px" title="' + esc(g.work) + '">' + (g.work ? esc(g.work) : '<span class="muted">-</span>') + '</td>'
+      + '<td>' + (g.done ? badge('green', '완료') : badge('gray', '진행')) + '</td>'
+      + '</tr>';
+  }).join('');
+  var logBody;
+  if (!cands.length) {
+    logBody = '<div class="labor-empty">프로젝트관리나 노무비 대장에 공사를 먼저 등록해 주세요.</div>';
+  } else if (!cand) {
+    logBody = '<div class="labor-empty">프로젝트(공사)를 선택하면 그 프로젝트의 작업일보를 날짜순으로 모아 보여줍니다.</div>';
+  } else if (res.badRange) {
+    logBody = '<div class="labor-empty">시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.</div>';
+  } else if (!res.logs.length) {
+    logBody = '<div class="labor-empty">' + esc(laborFindRangeText(f)) + ' 기간에 이 프로젝트(공사)의 작업일보가 없습니다.</div>';
+  } else {
+    logBody = '<div class="table-wrap"><table class="labor-table" style="min-width:900px"><thead><tr>'
+      + '<th>순번</th><th>작업일</th><th>프로젝트No.</th><th>발주처</th><th>공사명</th><th>작업내용</th><th>완료 상태</th>'
+      + '</tr></thead><tbody>' + logRows + '</tbody></table></div>';
+  }
+  var logCard = '<div class="card labor-sec">'
+    + '<div class="labor-sec-head"><h3>' + icon('file', 17) + ' 해당 프로젝트 작업내용</h3>'
+    + '<span class="sub">' + res.logs.length + '건 · 날짜순</span>'
+    + '<button class="btn btn-ghost btn-sm" data-action="labor-find-csv-logs"' + (res.logs.length ? '' : ' disabled') + '>'
+    + icon('download', 14) + ' CSV 다운로드</button></div>'
+    + logBody + '</div>';
+
+  var head = '<div class="view-head"><div class="view-head-text"><p class="view-sub">'
+    + '기간을 정하고 프로젝트(공사)를 고르면, 그 기간에 근무한 일용직과 작업내용을 모든 월에서 모아 보여줍니다.'
+    + '</p></div></div>';
+  return head + filter + kpis + workerCard + logCard
+    + '<div class="labor-note">※ 출근부에서 공사(약어)를 지정한 날만 집계됩니다. 월마다 약어가 달라도 같은 공사면 합산하고, 작업내용은 공사명·프로젝트No.로 맞춰 모읍니다.</div>';
+}
+function setLaborTab(tab) {
+  if (tab !== 'ledger' && tab !== 'find') return;
+  ui.laborTab = tab;
+  if (tab === 'find') laborFindState();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+function setLaborFindDate(role, value) {
+  var f = laborFindState();
+  var v = isISODate(value) ? value : '';
+  if (role === 'start') f.start = v; else if (role === 'end') f.end = v; else return;
+  f.preset = '';
+  render();
+}
+function setLaborFindProject(key) {
+  var f = laborFindState();
+  f.project = str(key);
+  render();
+}
+function applyLaborFindPreset(p) {
+  var f = laborFindState();
+  var now = new Date(), y = now.getFullYear(), mo = now.getMonth();
+  if (p === 'month') {
+    var r = laborMonthRange(currentMonthKey());
+    f.start = r.start; f.end = r.end;
+  } else if (p === '3m') {
+    f.start = ymd(new Date(y, mo - 2, 1));
+    f.end = ymd(new Date(y, mo + 1, 0));
+  } else if (p === 'year') {
+    f.start = y + '-01-01'; f.end = y + '-12-31';
+  } else if (p === 'all') {
+    f.start = ''; f.end = '';
+  } else return;
+  f.preset = p;
+  render();
+}
+function exportLaborFindCSV(kind) {
+  var f = laborFindState();
+  var cand = laborFindCandidate();
+  if (!cand) { toast('프로젝트(공사)를 먼저 선택해 주세요.', 'alert'); return; }
+  var res = laborFindResult(cand);
+  var range = (f.start || '') + '~' + (f.end || '');
+  var rows;
+  if (kind === 'logs') {
+    if (!res.logs.length) { toast('내보낼 작업내용이 없습니다.', 'alert'); return; }
+    rows = [['순번', '작업일', '프로젝트No.', '발주처', '공사명', '작업내용', '완료 상태']];
+    res.logs.forEach(function (it, i) {
+      var g = it.log;
+      rows.push([i + 1, g.date, g.projectNo, g.client, g.name, g.work, g.done ? '완료' : '진행']);
+    });
+    downloadCSV('프로젝트별작업내용_' + laborFileSafe(cand.name || cand.client) + '_' + range + '.csv', rows);
+    return;
+  }
+  if (!res.workers.length) { toast('내보낼 노무비 자료가 없습니다.', 'alert'); return; }
+  rows = [['순번', '성명', '연락처', '투입 일수', '총 공수', '노임단가(원)', '총 노무비(원)', '공제(원)', '실지급(원)', '근무 일자 상세']];
+  res.workers.forEach(function (r, i) {
+    rows.push([
+      i + 1, r.name, r.phone, r.att, trimNum(r.hours), r.rate, r.gross, r.deduct, r.net,
+      r.days.map(function (d) { return laborDayLabel(d.iso) + '(' + trimNum(d.v) + ')'; }).join(', ')
+    ]);
+  });
+  rows.push(['합계', '', '', res.totals.att, trimNum(res.totals.hours), '', res.totals.gross, res.totals.deduct, res.totals.net, '']);
+  downloadCSV('프로젝트별노무비_' + laborFileSafe(cand.name || cand.client) + '_' + range + '.csv', rows);
+}
+
 /* ---------------- labor actions ---------------- */
 function setLaborMonth(key) {
   if (!/^\d{4}-\d{2}$/.test(str(key))) return;
@@ -3380,7 +3850,7 @@ function laborLoadPrevMonth() {
     onConfirm: function () {
       var m = laborMonth();
       m.companies = pm.companies.map(function (c) {
-        return normLaborCompany({ id: uid('cmp'), no: c.no, client: c.client, abbr: c.abbr, name: c.name, memo: c.memo });
+        return normLaborCompany({ id: uid('cmp'), no: c.no, client: c.client, abbr: c.abbr, name: c.name, memo: c.memo, projectId: c.projectId });
       });
       m.rows = pm.rows.map(function (r) { return { workerId: r.workerId, days: {}, paid: false }; });
       m.tax = pm.tax;
@@ -3482,7 +3952,8 @@ function addCompanyFromSource(kind, id) {
   if (!abbr) { toast('약어를 더 만들 수 없습니다.', 'alert'); return; }
   m.companies.push(normLaborCompany({
     id: uid('cmp'), no: '', client: src.client || '', abbr: abbr,
-    name: src.name || '', memo: kind === 'site' ? '현장에서 불러옴' : '프로젝트에서 불러옴'
+    name: src.name || '', memo: kind === 'site' ? '현장에서 불러옴' : '프로젝트에서 불러옴',
+    projectId: kind === 'project' ? src.id : ''
   }));
   saveLabor(); closeModal(); render(); toast('공사를 추가했습니다. (' + abbr + ')');
 }
@@ -3720,6 +4191,7 @@ function openLogModal(id) {
     + '<div class="f"><label>공사명</label><input name="name" maxlength="100" value="' + esc(d.name) + '"></div>'
     + '<div class="f full"><label>작업내용</label><textarea name="work" maxlength="300" placeholder="예) 1층 슬라브 타설">' + esc(d.work) + '</textarea></div>'
     + '<div class="f full"><label class="check-line"><input type="checkbox" name="done" value="1"' + (d.done ? ' checked' : '') + '> 작업 완료로 표시</label></div>'
+    + '<input type="hidden" name="projectId" value="' + esc(d.projectId || '') + '">'
     + '</div></form>';
   openModal({ title: g ? '작업일보 수정' : '작업일보 추가', body: body, foot: formFoot(g ? '저장' : '추가', 'laborLogForm') });
 }
@@ -3731,7 +4203,8 @@ function saveLaborLogForm(form) {
   var payload = {
     date: date, projectNo: fv(form, 'projectNo'), client: fv(form, 'client'),
     name: fv(form, 'name'), work: fv(form, 'work'),
-    done: !!(form.elements.done && form.elements.done.checked)
+    done: !!(form.elements.done && form.elements.done.checked),
+    projectId: fv(form, 'projectId')
   };
   if (!payload.name && !payload.work) return fieldError(form, 'work', '공사명이나 작업내용을 입력해 주세요.');
   if (id) {
@@ -4337,6 +4810,10 @@ document.addEventListener('click', function (e) {
     case 'reset-doc-filter': ui.doc = { q: '', site: 'all', cat: 'all', status: 'all' }; render(); break;
     case 'bulk-complete': bulkComplete(el.getAttribute('data-bulk')); break;
     case 'bulk-delete': bulkDelete(el.getAttribute('data-bulk')); break;
+    case 'labor-tab': setLaborTab(el.getAttribute('data-tab')); break;
+    case 'labor-find-preset': applyLaborFindPreset(el.getAttribute('data-preset')); break;
+    case 'labor-find-csv-workers': exportLaborFindCSV('workers'); break;
+    case 'labor-find-csv-logs': exportLaborFindCSV('logs'); break;
     case 'labor-load-prev': laborLoadPrevMonth(); break;
     case 'labor-export': exportLaborXlsx(); break;
     case 'labor-tax': laborToggleTax(); break;
@@ -4392,6 +4869,7 @@ document.addEventListener('change', function (e) {
       if (f.elements.projectNo) f.elements.projectNo.value = cmp.no || '';
       if (f.elements.client) f.elements.client.value = cmp.client || '';
       if (f.elements.name) f.elements.name.value = cmp.name || '';
+      if (f.elements.projectId) f.elements.projectId.value = cmp.projectId || '';
     }
     return;
   }
@@ -4402,6 +4880,8 @@ document.addEventListener('change', function (e) {
   if (action === 'labor-all') { laborSelectAll(el.getAttribute('data-kind'), el.checked); return; }
   if (action === 'labor-month') { setLaborMonth(el.value); return; }
   if (action === 'labor-chief') { setLaborChief(el.value); return; }
+  if (action === 'labor-find-date') { setLaborFindDate(el.getAttribute('data-role'), el.value); return; }
+  if (action === 'labor-find-project') { setLaborFindProject(el.value); return; }
   if (action === 'toggle-task') { toggleTask(el.getAttribute('data-id'), el.checked); return; }
   if (action === 'set-task-status') { setTaskStatus(el.getAttribute('data-id'), el.value); return; }
   if (action === 'set-doc-status') { setDocStatus(el.getAttribute('data-id'), el.value); return; }
