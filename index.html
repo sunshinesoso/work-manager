@@ -1097,7 +1097,9 @@ var ui = {
   laborTab: 'ledger',
   laborFind: null,
   laborSel: {},
-  travelId: null
+  travelId: null,
+  travelTab: 'write',
+  travelFind: null
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
 
@@ -4982,7 +4984,7 @@ function travelEditor(rep) {
 
   var detail = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('clipboard', 15) + ' 일자별 정산 내역</h3>'
-    + '<span class="sub">식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다.</span></div>'
+    + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다.</span></div>'
     + '<div class="table-scroll trv-detail-scroll"><table class="table trv-table trv-detail"><thead><tr>'
     + '<th style="min-width:134px">월/일</th>'
     + TRAVEL_AMOUNTS.map(function (f) { return '<th class="num" style="min-width:' + (f.w || 120) + 'px">' + f.label + '</th>'; }).join('')
@@ -5167,10 +5169,37 @@ function travelSetRowField(i, field, value) {
   if (!rep || !rep.rows[i]) return;
   var row = rep.rows[i];
   if (field === 'people') row.people = Math.max(0, Math.round(Number(value) || 0));
-  else if (field === 'date') row.date = isISODate(value) ? value : '';
+  else if (field === 'date') {
+    var nextDate = isISODate(value) ? value : '';
+    var dateChanged = nextDate !== row.date;
+    row.date = nextDate;
+    if (row.date && dateChanged) {
+      if (trvCascadeDates(rep, i)) trvSyncDateInputs(rep, i + 1);
+    }
+  }
   else row[field] = str(value).slice(0, 80);
   travelSaveSoon();
   travelRefreshDOM();
+}
+/* i번째 행 날짜부터 마지막 행까지 하루씩 이어서 채운다 */
+function trvCascadeDates(rep, from) {
+  if (!rep || !rep.rows[from] || !isISODate(rep.rows[from].date)) return 0;
+  var d = parseISO(rep.rows[from].date), n = 0;
+  if (!d) return 0;
+  for (var j = from + 1; j < rep.rows.length; j++) {
+    d = addDays(d, 1);
+    rep.rows[j].date = ymd(d);
+    n++;
+  }
+  return n;
+}
+/* 화면을 다시 그리지 않고(포커스 유지) 연쇄로 바뀐 날짜 입력칸만 맞춘다 */
+function trvSyncDateInputs(rep, from) {
+  if (!rep) return;
+  for (var j = from; j < rep.rows.length; j++) {
+    var el = document.querySelector('[data-trv-row-field="date"][data-i="' + j + '"]');
+    if (el && isISODate(rep.rows[j].date)) el.value = rep.rows[j].date;
+  }
 }
 function travelSetPurposeField(i, field, value) {
   var rep = travelCur();
@@ -5220,9 +5249,8 @@ function travelAddRow(next) {
   if (!rep) return;
   if (rep.rows.length >= TRAVEL_MAX_ROWS) { toast('정산 내역은 엑셀 양식 기준 ' + TRAVEL_MAX_ROWS + '행까지 넣을 수 있습니다.', 'alert'); return; }
   var last = rep.rows[rep.rows.length - 1] || {};
-  var date = '';
-  if (next && isISODate(last.date)) date = ymd(addDays(parseISO(last.date), 1));
-  else if (!last.date) date = todayISO();
+  var date = todayISO();
+  if (isISODate(last.date)) date = ymd(addDays(parseISO(last.date), 1));
   var row = emptyTravelRow(date);
   if (next) { row.no = str(last.no); row.people = Math.round(trvNum(last.people)); }
   rep.rows.push(row);
@@ -5365,8 +5393,413 @@ function exportTravelXlsx(id) {
   });
 }
 
+/* ---------------- 정산서 작성 / 프로젝트별 기간 조회 ---------------- */
+function travelTabs() {
+  var tab = ui.travelTab === 'find' ? 'find' : 'write';
+  return '<div class="labor-tabs" role="tablist" aria-label="출장비 정산서 보기 방식">'
+    + '<button type="button" role="tab" aria-selected="' + (tab === 'write' ? 'true' : 'false') + '"'
+    + ' class="labor-tab' + (tab === 'write' ? ' on' : '') + '" data-action="travel-tab" data-tab="write">'
+    + icon('clipboard', 15) + ' 정산서 작성</button>'
+    + '<button type="button" role="tab" aria-selected="' + (tab === 'find' ? 'true' : 'false') + '"'
+    + ' class="labor-tab' + (tab === 'find' ? ' on' : '') + '" data-action="travel-tab" data-tab="find">'
+    + icon('search', 15) + ' 프로젝트별 기간 조회</button>'
+    + '</div>';
+}
+function setTravelTab(tab) {
+  ui.travelTab = tab === 'find' ? 'find' : 'write';
+  if (ui.travelTab === 'find') travelFindState();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+function travelFindState() {
+  if (!ui.travelFind || typeof ui.travelFind !== 'object') {
+    var now = new Date();
+    ui.travelFind = {
+      start: ymd(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
+      end: ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+      project: '', preset: '3m'
+    };
+  }
+  var f = ui.travelFind;
+  if (typeof f.start !== 'string') f.start = '';
+  if (typeof f.end !== 'string') f.end = '';
+  if (typeof f.project !== 'string') f.project = '';
+  return f;
+}
+function travelFindNorm(v) { return str(v).replace(/\s+/g, '').toLowerCase(); }
+function travelFindRangeText(f) {
+  f = f || travelFindState();
+  if (f.start && f.end) return f.start + ' ~ ' + f.end;
+  if (f.start) return f.start + ' 이후';
+  if (f.end) return f.end + ' 이전';
+  return '전체 기간';
+}
+function travelFindFileSafe(v) {
+  return str(v).replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 40) || '전체프로젝트';
+}
+/* 저장된 정산서의 출장 목적 + 프로젝트 관리 프로젝트를 하나의 목록으로 */
+function travelFindCandidates() {
+  var list = [], byKey = {}, byWork = {};
+  function push(key, no, client, work) {
+    var c = byKey[key];
+    if (!c) {
+      c = byKey[key] = { key: key, no: no || '', client: client || '', work: work || '', reports: {} };
+      list.push(c);
+    }
+    return c;
+  }
+  travel.reports.forEach(function (rep) {
+    arr(rep.purposes).forEach(function (p) {
+      var no = str(p.no).trim(), client = str(p.client).trim(), work = str(p.work).trim();
+      if (!no && !client && !work) return;
+      var wk = 'nw:' + travelFindNorm(client) + '|' + travelFindNorm(work);
+      var key = no ? 'no:' + no : wk;
+      var c = push(key, no, client, work);
+      if (!c.no && no) c.no = no;
+      if (!c.client && client) c.client = client;
+      if (!c.work && work) c.work = work;
+      c.reports[rep.id] = true;
+      if (!byWork[wk]) byWork[wk] = c;
+    });
+  });
+  arr(db.projects).forEach(function (p) {
+    var client = str(p.client).trim(), work = str(p.name).trim();
+    if (!client && !work) return;
+    var wk = 'nw:' + travelFindNorm(client) + '|' + travelFindNorm(work);
+    if (byKey[wk] || byWork[wk]) return;
+    var c = push(wk, '', client, work);
+    c.isProject = true;
+  });
+  list.forEach(function (c) { c.count = Object.keys(c.reports).length; });
+  list.sort(function (a, b) {
+    return str(a.no || a.client || a.work).localeCompare(str(b.no || b.client || b.work), 'ko');
+  });
+  return list;
+}
+function travelFindCandidate() {
+  var f = travelFindState();
+  if (!f.project) return null;
+  var list = travelFindCandidates();
+  for (var i = 0; i < list.length; i++) { if (list[i].key === f.project) return list[i]; }
+  return null;
+}
+function travelFindCandidateLabel(c) {
+  var head = (c.no ? '[' + c.no + '] ' : '') + (c.client || c.work || '(이름 없음)');
+  if (c.client && c.work) head += ' · ' + c.work;
+  if (c.count) head += ' · ' + c.count + '건';
+  return head;
+}
+function trvPurposeOfNo(rep, no) {
+  var k = str(no).trim();
+  if (!k) return null;
+  var ps = arr(rep.purposes);
+  for (var i = 0; i < ps.length; i++) {
+    if (str(ps[i].no).trim() === k) return ps[i];
+  }
+  return null;
+}
+/* 그 행이 선택한 프로젝트(공사)의 내역인지 */
+function travelFindRowMatch(cand, rep, row) {
+  if (!cand) return true;
+  var no = str(row.no).trim();
+  var nc = travelFindNorm(cand.client), nw = travelFindNorm(cand.work);
+  if (no) {
+    if (cand.no && no === cand.no) return true;
+    var p = trvPurposeOfNo(rep, no);
+    if (p && travelFindNorm(p.client) === nc && travelFindNorm(p.work) === nw) return true;
+    return false;
+  }
+  var ps = arr(rep.purposes).filter(function (p2) {
+    return str(p2.no).trim() || str(p2.client).trim() || str(p2.work).trim();
+  });
+  if (ps.length !== 1) return false;
+  if (cand.no && str(ps[0].no).trim() === cand.no) return true;
+  return travelFindNorm(ps[0].client) === nc && travelFindNorm(ps[0].work) === nw;
+}
+function travelFindResult(cand) {
+  var f = travelFindState();
+  var res = {
+    items: [], persons: [], projects: [], reports: 0,
+    badRange: !!(f.start && f.end && f.start > f.end),
+    totals: { rows: 0, days: 0, people: 0, fuel: 0, stay: 0, meal: 0, material: 0, etc: 0, total: 0 }
+  };
+  if (res.badRange) return res;
+  var rmap = {};
+  travel.reports.forEach(function (rep) {
+    arr(rep.rows).forEach(function (row) {
+      if (!trvRowHas(row) || !isISODate(row.date)) return;
+      if (f.start && row.date < f.start) return;
+      if (f.end && row.date > f.end) return;
+      if (!travelFindRowMatch(cand, rep, row)) return;
+      var amt = {};
+      TRAVEL_AMOUNTS.forEach(function (a) {
+        var v = trvAmount(row[a.key]);
+        amt[a.key] = isFinite(v) ? v : 0;
+      });
+      var no = str(row.no).trim();
+      var pur = no ? trvPurposeOfNo(rep, no) : null;
+      res.items.push({
+        repId: rep.id, date: row.date, person: trvPersonBare(rep) || '성명 미입력', dept: str(rep.dept).trim(),
+        kind: rep.kind === TRAVEL_KIND_CASH ? '현금' : '법인카드',
+        card4: str(rep.card4).replace(/[^0-9]/g, ''),
+        amt: amt, sum: trvRowSum(row), people: Math.round(trvNum(row.people)),
+        no: no,
+        client: no ? str(pur ? pur.client : trvClientOf(rep, no)).trim() : (cand ? str(cand.client).trim() : ''),
+        work: no ? str(pur ? pur.work : '').trim() : (cand ? str(cand.work).trim() : ''),
+        reportLabel: (trvPersonBare(rep) || '이름 없음') + ' · ' + trvRangeShort(rep)
+      });
+      rmap[rep.id] = true;
+    });
+  });
+  res.reports = Object.keys(rmap).length;
+  res.items.sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    var c = str(a.person).localeCompare(str(b.person), 'ko');
+    return c || (a.repId < b.repId ? -1 : a.repId > b.repId ? 1 : 0);
+  });
+  var pmap = {}, jmap = {}, dset = {};
+  res.items.forEach(function (it) {
+    dset[it.date] = true;
+    TRAVEL_AMOUNTS.forEach(function (a) { res.totals[a.key] += it.amt[a.key]; });
+    res.totals.total += it.sum;
+    res.totals.people += it.people;
+    res.totals.rows += 1;
+    var pk = it.person + '|' + it.dept;
+    var p = pmap[pk];
+    if (!p) p = pmap[pk] = { name: it.person, dept: it.dept, days: {}, rows: 0, people: 0, total: 0 };
+    p.days[it.date] = true; p.rows += 1; p.people += it.people; p.total += it.sum;
+    var jk = it.no ? 'no:' + it.no : 'nw:' + travelFindNorm(it.client) + '|' + travelFindNorm(it.work);
+    var j = jmap[jk];
+    if (!j) j = jmap[jk] = { no: it.no, client: it.client, work: it.work, days: {}, rows: 0, people: 0, total: 0 };
+    if (!j.client && it.client) j.client = it.client;
+    if (!j.work && it.work) j.work = it.work;
+    j.days[it.date] = true; j.rows += 1; j.people += it.people; j.total += it.sum;
+  });
+  res.totals.days = Object.keys(dset).length;
+  function finish(m) {
+    var out = Object.keys(m).map(function (k) {
+      var x = m[k];
+      x.dayCount = Object.keys(x.days).length;
+      return x;
+    });
+    out.sort(function (a, b) { return b.total - a.total; });
+    return out;
+  }
+  res.persons = finish(pmap);
+  res.projects = finish(jmap);
+  return res;
+}
+function trvFindPlaceLabel(it) {
+  if (!it.no && !it.client && !it.work) return '공사번호 미지정';
+  var head = it.no ? '[' + it.no + '] ' : '';
+  head += it.client || it.work || '공사번호 미지정';
+  return head;
+}
+function viewTravelFind() {
+  var f = travelFindState();
+  var cands = travelFindCandidates();
+  var cand = travelFindCandidate();
+  if (f.project && !cand) { f.project = ''; cands = travelFindCandidates(); }
+  var res = travelFindResult(cand);
+  var presetBtns = [['month', '이번 달'], ['3m', '최근 3개월'], ['year', '올해 전체'], ['all', '전체 기간']]
+    .map(function (p) {
+      return '<button type="button" class="btn btn-ghost' + (f.preset === p[0] ? ' on' : '') + '" data-action="travel-find-preset" data-preset="' + p[0] + '">' + p[1] + '</button>';
+    }).join('');
+  var pairs = [['', cands.length ? '전체 프로젝트 (' + cands.length + ')' : '등록된 프로젝트·공사가 없습니다']]
+    .concat(cands.map(function (c) { return [c.key, travelFindCandidateLabel(c)]; }));
+  var filter = '<div class="card labor-sec" style="margin-top:0">'
+    + '<div class="labor-find-bar">'
+    + '<label class="labor-find-field"><span>시작일</span><input type="date" value="' + esc(f.start) + '" data-action="travel-find-date" data-role="start" aria-label="조회 시작일"></label>'
+    + '<span class="labor-find-tilde">~</span>'
+    + '<label class="labor-find-field"><span>종료일</span><input type="date" value="' + esc(f.end) + '" data-action="travel-find-date" data-role="end" aria-label="조회 종료일"></label>'
+    + '<div class="labor-find-field"><span>빠른 기간</span><div class="labor-presets">' + presetBtns + '</div></div>'
+    + '<div class="labor-find-field grow"><span>프로젝트(공사)</span><select data-action="travel-find-project" aria-label="프로젝트(공사) 선택"'
+    + (cands.length ? '' : ' disabled') + '>' + options(pairs, f.project) + '</select></div>'
+    + '</div>';
+  var bits = ['<span>조회 기간 <b>' + esc(travelFindRangeText(f)) + '</b></span>'];
+  if (cand) {
+    bits.push('<span>프로젝트 <b>' + esc(cand.client || cand.work || '-') + '</b>'
+      + (cand.no ? ' <span class="muted">[' + esc(cand.no) + ']</span>' : '') + '</span>');
+  }
+  bits.push('<span>정산서 <b>' + res.reports + '건</b> · 일자별 <b>' + res.totals.rows + '행</b></span>');
+  if (res.badRange) bits.push('<span class="warn">시작일이 종료일보다 늦습니다.</span>');
+  filter += '<div class="labor-find-status">' + bits.join('<span class="muted">·</span>') + '</div></div>';
+
+  var kpis = '<div class="labor-kpis">'
+    + laborKpi('총 정산액', won(res.totals.total), 'clipboard', 'blue')
+    + laborKpi('유류/통행료', won(res.totals.fuel), 'crane', 'slate')
+    + laborKpi('숙박대', won(res.totals.stay), 'building', 'violet')
+    + laborKpi('식대', won(res.totals.meal), 'receipt', 'orange')
+    + laborKpi('자재비', won(res.totals.material), 'layers', 'green')
+    + laborKpi('기타경비', won(res.totals.etc), 'file', 'slate')
+    + laborKpi('투입인원 합계', res.totals.people + ' <small>명</small>', 'users', 'green')
+    + laborKpi('해당 일수', res.totals.days + ' <small>일</small>', 'calendar', 'violet')
+    + '</div>';
+
+  var personRows = res.persons.map(function (p) {
+    return '<tr>'
+      + '<td class="nm">' + esc(p.name) + '</td>'
+      + '<td>' + (p.dept ? esc(p.dept) : '<span class="muted">-</span>') + '</td>'
+      + '<td class="num">' + p.dayCount + '</td>'
+      + '<td class="num">' + p.rows + '</td>'
+      + '<td class="num">' + p.people + '</td>'
+      + '<td class="num" style="font-weight:800">' + won(p.total) + '</td>'
+      + '</tr>';
+  }).join('');
+  var personBody = res.badRange
+    ? '<div class="labor-empty">시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.</div>'
+    : (!res.persons.length
+      ? '<div class="labor-empty">' + esc(travelFindRangeText(f)) + ' 기간에 조건에 맞는 출장비 정산 내역이 없습니다.</div>'
+      : '<div class="table-wrap"><table class="labor-table" style="min-width:640px"><thead><tr>'
+      + '<th>성명</th><th>부서</th><th class="num">출장 일수</th><th class="num">정산 행</th><th class="num">투입인원</th><th class="num">총 정산액</th>'
+      + '</tr></thead><tbody>' + personRows + '</tbody>'
+      + '<tfoot><tr><td colspan="2" style="text-align:right">합계</td>'
+      + '<td class="num">' + res.totals.days + '</td><td class="num">' + res.totals.rows + '</td>'
+      + '<td class="num">' + res.totals.people + '</td><td class="num">' + won(res.totals.total) + '</td>'
+      + '</tr></tfoot></table></div>');
+  var personCard = '<div class="card labor-sec">'
+    + '<div class="labor-sec-head"><h3>' + icon('user', 17) + ' 출장자별 집계</h3>'
+    + '<span class="sub">' + res.persons.length + '명 · 성명/부서 기준</span></div>' + personBody + '</div>';
+
+  var projectRows = res.projects.map(function (j) {
+    return '<tr>'
+      + '<td class="nowrap">' + (j.no ? esc(j.no) : '<span class="muted">-</span>') + '</td>'
+      + '<td>' + (j.client ? esc(j.client) : (j.no || j.work ? '<span class="muted">-</span>' : '공사번호 미지정')) + '</td>'
+      + '<td class="wrap" style="max-width:300px" title="' + esc(j.work) + '">' + (j.work ? esc(j.work) : '<span class="muted">-</span>') + '</td>'
+      + '<td class="num">' + j.dayCount + '</td>'
+      + '<td class="num">' + j.rows + '</td>'
+      + '<td class="num">' + j.people + '</td>'
+      + '<td class="num" style="font-weight:800">' + won(j.total) + '</td>'
+      + '</tr>';
+  }).join('');
+  var projectBody = res.badRange
+    ? '<div class="labor-empty">시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.</div>'
+    : (!res.projects.length
+      ? '<div class="labor-empty">' + esc(travelFindRangeText(f)) + ' 기간에 조건에 맞는 출장비 정산 내역이 없습니다.</div>'
+      : '<div class="table-wrap"><table class="labor-table" style="min-width:760px"><thead><tr>'
+      + '<th>공사번호</th><th>업체명</th><th>공사내용</th><th class="num">출장 일수</th><th class="num">정산 행</th><th class="num">투입인원</th><th class="num">총 정산액</th>'
+      + '</tr></thead><tbody>' + projectRows + '</tbody>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right">합계</td>'
+      + '<td class="num">' + res.totals.days + '</td><td class="num">' + res.totals.rows + '</td>'
+      + '<td class="num">' + res.totals.people + '</td><td class="num">' + won(res.totals.total) + '</td>'
+      + '</tr></tfoot></table></div>');
+  var projectCard = '<div class="card labor-sec">'
+    + '<div class="labor-sec-head"><h3>' + icon('building', 17) + ' 프로젝트별 집계</h3>'
+    + '<span class="sub">' + res.projects.length + '건 · 공사번호/업체 기준</span></div>' + projectBody + '</div>';
+
+  var detailRows = res.items.map(function (it) {
+    var dt = parseISO(it.date);
+    var kind = it.kind === '현금' ? badge('gray', '현금') : badge('blue', '법인카드' + (it.card4 ? ' ' + esc(it.card4) : ''));
+    return '<tr>'
+      + '<td class="nowrap">' + esc(it.date) + (dt ? ' (' + WEEKDAYS[dt.getDay()] + ')' : '') + '</td>'
+      + '<td class="nm nowrap">' + esc(it.person) + '</td>'
+      + '<td class="nowrap">' + kind + '</td>'
+      + TRAVEL_AMOUNTS.map(function (a) {
+        return '<td class="num">' + (it.amt[a.key] ? Number(it.amt[a.key]).toLocaleString('ko-KR') : '<span class="muted">-</span>') + '</td>';
+      }).join('')
+      + '<td class="num" style="font-weight:800">' + won(it.sum) + '</td>'
+      + '<td class="nowrap">' + esc(trvFindPlaceLabel(it)) + '</td>'
+      + '<td class="num">' + it.people + '</td>'
+      + '<td><div class="actions"><button class="btn btn-ghost btn-sm" data-action="travel-find-open" data-id="' + esc(it.repId) + '">정산서 열기</button></div></td>'
+      + '</tr>';
+  }).join('');
+  var detailBody = res.badRange
+    ? '<div class="labor-empty">시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.</div>'
+    : (!res.items.length
+      ? '<div class="labor-empty">' + (travel.reports.length
+        ? esc(travelFindRangeText(f)) + ' 기간에 조건에 맞는 일자별 정산 내역이 없습니다.'
+        : '저장된 출장비 정산서가 없습니다. [정산서 작성] 탭에서 먼저 정산서를 만들어 주세요.') + '</div>'
+      : '<div class="table-wrap"><table class="labor-table trv-find-table" style="min-width:1180px"><thead><tr>'
+      + '<th>날짜</th><th>성명</th><th>구분</th>'
+      + TRAVEL_AMOUNTS.map(function (a) { return '<th class="num">' + esc(a.label) + '</th>'; }).join('')
+      + '<th class="num">합계</th><th>공사번호/업체명</th><th class="num">투입인원</th><th></th>'
+      + '</tr></thead><tbody>' + detailRows + '</tbody>'
+      + '<tfoot><tr><td colspan="3" style="text-align:right">합계</td>'
+      + TRAVEL_AMOUNTS.map(function (a) {
+        return '<td class="num">' + Number(res.totals[a.key]).toLocaleString('ko-KR') + '</td>';
+      }).join('')
+      + '<td class="num">' + won(res.totals.total) + '</td><td></td>'
+      + '<td class="num">' + res.totals.people + '</td><td></td>'
+      + '</tr></tfoot></table></div>');
+  var detailCard = '<div class="card labor-sec">'
+    + '<div class="labor-sec-head"><h3>' + icon('clipboard', 17) + ' 일자별 상세 내역</h3>'
+    + '<span class="sub">' + res.totals.rows + '행 · 날짜순</span>'
+    + '<button class="btn btn-ghost btn-sm" data-action="travel-find-csv"' + (res.items.length ? '' : ' disabled') + '>'
+    + icon('download', 14) + ' CSV 다운로드</button></div>'
+    + detailBody + '</div>';
+
+  var head = '<div class="view-head"><div class="view-head-text"><p class="view-sub">'
+    + '기간과 프로젝트를 정하면 저장된 모든 출장비 정산서의 일자별 내역을 모아 정산액·투입인원을 집계합니다.'
+    + '</p></div></div>';
+  return head + filter + kpis + personCard + projectCard + detailCard
+    + '<div class="labor-note">※ 공사번호가 비어 있는 행은 그 정산서의 출장 목적이 하나일 때 그 프로젝트로 묶입니다. 금액은 유류/숙박/식대/자재/기타를 각각 합산합니다.</div>';
+}
+function setTravelFindDate(role, value) {
+  var f = travelFindState();
+  var v = isISODate(value) ? value : '';
+  if (role === 'start') f.start = v;
+  else if (role === 'end') f.end = v;
+  else return;
+  f.preset = '';
+  render();
+}
+function setTravelFindProject(key) {
+  var f = travelFindState();
+  f.project = str(key);
+  render();
+}
+function applyTravelFindPreset(p) {
+  var f = travelFindState();
+  var now = new Date(), y = now.getFullYear(), mo = now.getMonth();
+  if (p === 'month') {
+    f.start = ymd(new Date(y, mo, 1));
+    f.end = ymd(new Date(y, mo + 1, 0));
+  } else if (p === '3m') {
+    f.start = ymd(new Date(y, mo - 2, 1));
+    f.end = ymd(new Date(y, mo + 1, 0));
+  } else if (p === 'year') {
+    f.start = y + '-01-01'; f.end = y + '-12-31';
+  } else if (p === 'all') {
+    f.start = ''; f.end = '';
+  } else return;
+  f.preset = p;
+  render();
+}
+function travelOpenFromFind(id) {
+  if (!travelReport(id)) { toast('정산서를 찾을 수 없습니다. 삭제된 정산서일 수 있습니다.', 'alert'); return; }
+  ui.travelId = id;
+  ui.travelTab = 'write';
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+function exportTravelFindCSV() {
+  var f = travelFindState();
+  var cand = travelFindCandidate();
+  var res = travelFindResult(cand);
+  if (res.badRange) { toast('시작일이 종료일보다 늦습니다. 기간을 다시 선택해 주세요.', 'alert'); return; }
+  if (!res.items.length) { toast('내보낼 출장비 정산 내역이 없습니다.', 'alert'); return; }
+  var rows = [['날짜', '요일', '성명', '부서', '구분', '유류/통행료', '숙박대', '식대', '자재비', '기타경비', '합계', '공사번호', '업체명', '공사내용', '투입인원', '정산서']];
+  res.items.forEach(function (it) {
+    var dt = parseISO(it.date);
+    rows.push([
+      it.date, dt ? WEEKDAYS[dt.getDay()] : '', it.person, it.dept,
+      it.kind + (it.card4 ? ' ' + it.card4 : ''),
+      it.amt.fuel, it.amt.stay, it.amt.meal, it.amt.material, it.amt.etc, it.sum,
+      it.no, it.client, it.work, it.people, it.reportLabel
+    ]);
+  });
+  rows.push(['합계', '', '', '', '',
+    res.totals.fuel, res.totals.stay, res.totals.meal, res.totals.material, res.totals.etc, res.totals.total,
+    '', '', '', res.totals.people, '']);
+  var range = f.start && f.end ? f.start + '~' + f.end
+    : (f.start ? f.start + '이후' : (f.end ? f.end + '이전' : '전체기간'));
+  var who = cand ? travelFindFileSafe((cand.no ? cand.no + '_' : '') + (cand.client || cand.work)) : '전체프로젝트';
+  downloadCSV('출장비정산서_기간조회_' + who + '_' + range + '.csv', rows);
+}
+
 /* ---------------- 화면 ---------------- */
 function viewTravel() {
+  if (ui.travelTab === 'find') return travelTabs() + viewTravelFind();
   var reports = travel.reports;
   var cur = travelCur();
   if (ui.travelId && !cur) ui.travelId = null;
@@ -5381,7 +5814,7 @@ function viewTravel() {
     + '<button class="btn btn-ghost" data-action="travel-sample">' + icon('download', 16) + ' 샘플 불러오기</button>'
     + '<button class="btn btn-primary" data-action="travel-new">' + icon('plus', 16) + ' 새 정산서</button>'
     + '</div></div>';
-  return head + travelListCard(reports, cur) + (cur ? '<div style="height:16px"></div>' + travelEditor(cur) : '');
+  return travelTabs() + head + travelListCard(reports, cur) + (cur ? '<div style="height:16px"></div>' + travelEditor(cur) : '');
 }
 
 /* ------------------------- mutations ------------------------- */
@@ -5788,6 +6221,10 @@ document.addEventListener('click', function (e) {
     case 'labor-del-log': deleteLaborLog(id); break;
     case 'labor-log-done': toggleLaborLog(id); break;
     case 'travel-new': travelNew(); break;
+    case 'travel-tab': setTravelTab(el.getAttribute('data-tab')); break;
+    case 'travel-find-preset': applyTravelFindPreset(el.getAttribute('data-preset')); break;
+    case 'travel-find-open': travelOpenFromFind(id); break;
+    case 'travel-find-csv': exportTravelFindCSV(); break;
     case 'travel-sample': travelLoadSample(); break;
     case 'travel-open': travelOpen(id); break;
     case 'travel-back': ui.travelId = null; render(); break;
@@ -5847,6 +6284,8 @@ document.addEventListener('change', function (e) {
   if (action === 'labor-chief') { setLaborChief(el.value); return; }
   if (action === 'labor-find-date') { setLaborFindDate(el.getAttribute('data-role'), el.value); return; }
   if (action === 'labor-find-project') { setLaborFindProject(el.value); return; }
+  if (action === 'travel-find-date') { setTravelFindDate(el.getAttribute('data-role'), el.value); return; }
+  if (action === 'travel-find-project') { setTravelFindProject(el.value); return; }
   if (action === 'toggle-task') { toggleTask(el.getAttribute('data-id'), el.checked); return; }
   if (action === 'set-task-status') { setTaskStatus(el.getAttribute('data-id'), el.value); return; }
   if (action === 'set-doc-status') { setDocStatus(el.getAttribute('data-id'), el.value); return; }
