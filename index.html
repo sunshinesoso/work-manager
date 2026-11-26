@@ -2879,13 +2879,8 @@ function normLaborLog(l) {
     done: !!l.done
   };
 }
-function loadLabor() {
-  var raw = null;
-  try { raw = window.localStorage.getItem(LABOR_KEY); } catch (e) { raw = null; }
+function normalizeLabor(p) {
   var d = emptyLabor();
-  if (!raw) return d;
-  var p = null;
-  try { p = JSON.parse(raw); } catch (e) { return d; }
   if (!p || typeof p !== 'object') return d;
   d.workers = arr(p.workers).map(normLaborWorker).filter(function (w) { return w.name; });
   var months = p.months && typeof p.months === 'object' ? p.months : {};
@@ -2900,6 +2895,14 @@ function loadLabor() {
     d.months[k] = nm;
   });
   return d;
+}
+function loadLabor() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(LABOR_KEY); } catch (e) { raw = null; }
+  if (!raw) return emptyLabor();
+  var p = null;
+  try { p = JSON.parse(raw); } catch (e) { return emptyLabor(); }
+  return normalizeLabor(p);
 }
 function saveLabor() {
   try { window.localStorage.setItem(LABOR_KEY, JSON.stringify(labor)); }
@@ -3064,6 +3067,7 @@ function viewLabor() {
   var warns = [];
   if (m.companies.length > LABOR_MAX_COMPANIES) warns.push('공사는 엑셀 양식 기준 ' + LABOR_MAX_COMPANIES + '건까지 내보냅니다.');
   if (m.rows.length > LABOR_MAX_WORKERS) warns.push('출근현황은 엑셀 양식 기준 ' + LABOR_MAX_WORKERS + '명까지 내보냅니다.');
+  if (labor.workers.length > LABOR_MAX_DB) warns.push('인적사항 DB는 엑셀 양식 기준 ' + LABOR_MAX_DB + '명까지 내보냅니다.');
   var head = '<div class="view-head">'
     + '<div class="view-head-text"><p class="view-sub">' + esc(label) + ' 기준 · 근로자 ' + m.rows.length + '명 · 공사 ' + m.companies.length + '건</p></div>'
     + '<div class="labor-bar" style="margin-bottom:0">'
@@ -3484,8 +3488,24 @@ function openLaborDay(workerId, day) {
     + '<button type="button" class="btn btn-ghost btn-sm" data-action="labor-quick" data-v="1">1</button>'
     + '<button type="button" class="btn btn-ghost btn-sm" data-action="labor-quick" data-v="1.5">1.5</button>'
     + '<button type="button" class="btn btn-ghost btn-sm" data-action="labor-quick" data-v="0">비우기</button>'
+    + '<button type="button" class="btn btn-ghost btn-sm" data-action="labor-copy-prev">' + icon('refresh', 14) + ' 이전 날과 동일</button>'
     + '</div></form>';
   openModal({ title: '출근 입력', body: body, foot: formFoot('저장', 'laborDayForm') });
+}
+function laborCopyPrev() {
+  var form = document.getElementById('laborDayForm');
+  if (!form) return;
+  var workerId = form.getAttribute('data-worker');
+  var day = Number(form.getAttribute('data-day'));
+  var row = laborMonthRow(workerId);
+  if (!row || day <= 1) { toast('이전 날짜가 없습니다.', 'alert'); return; }
+  var prev = row.days[String(day - 1)];
+  if (!prev || !Number(prev.v)) { toast('이전 날에 입력된 공수가 없습니다.', 'alert'); return; }
+  var vEl = document.getElementById('laborDayV');
+  if (vEl) vEl.value = String(prev.v);
+  var cEl = form.elements.c;
+  if (cEl) cEl.value = prev.c || '';
+  toast('이전 날(' + (day - 1) + '일) 공수를 불러왔습니다.');
 }
 function laborQuickValue(v) {
   var el = document.getElementById('laborDayV');
@@ -3680,10 +3700,10 @@ function laborExportPayload() {
     companies: m.companies.slice(0, LABOR_MAX_COMPANIES).map(function (c) {
       return { no: c.no, client: c.client, abbr: c.abbr, name: c.name };
     }),
-    rows: m.rows.slice(0, LABOR_MAX_WORKERS).map(function (r) {
+    rows: m.rows.map(function (r) {
       var w = laborWorker(r.workerId) || {};
       return { name: w.name || '', days: r.days };
-    }),
+    }).filter(function (r) { return r.name; }).slice(0, LABOR_MAX_WORKERS),
     workers: labor.workers.slice(0, LABOR_MAX_DB).map(function (w) {
       return { name: w.name, rrn: w.rrn, phone: w.phone, addr: w.addr, bank: w.bank, account: w.account, holder: w.holder, rate: w.rate };
     }),
@@ -4045,7 +4065,8 @@ function exportJSON() {
     schema: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     user: db.user,
-    tasks: db.tasks, projects: db.projects, sites: db.sites, docs: db.docs, events: db.events
+    tasks: db.tasks, projects: db.projects, sites: db.sites, docs: db.docs, events: db.events,
+    labor: labor
   };
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '건설업_업무관리_백업_' + stamp() + '.json');
   toast('JSON 백업 파일을 내려받았습니다.');
@@ -4066,7 +4087,9 @@ function importJSON(file) {
       confirmLabel: '불러오기', danger: false,
       onConfirm: function () {
         db = normalizeDB(parsed);
+        if (parsed.labor) labor = normalizeLabor(parsed.labor);
         saveDB();
+        saveLabor();
         ui.view = 'dashboard';
         render();
         toast('데이터를 불러왔습니다.');
@@ -4233,6 +4256,7 @@ document.addEventListener('click', function (e) {
     case 'labor-add-selected': laborAddSelectedWorkers(); break;
     case 'labor-day': openLaborDay(el.getAttribute('data-worker'), Number(el.getAttribute('data-day'))); break;
     case 'labor-quick': laborQuickValue(Number(el.getAttribute('data-v'))); break;
+    case 'labor-copy-prev': laborCopyPrev(); break;
     case 'labor-bulk-h': laborBulkHours(); break;
     case 'labor-bulk-c': laborBulkCompany(); break;
     case 'labor-bulk-paid': laborBulkPaid(); break;
