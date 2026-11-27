@@ -3059,7 +3059,13 @@ function ensureProject(o) {
   var client = str(o.client).trim().slice(0, 60);
   var pname = str(o.name).trim().slice(0, 100);
   if (!no && !client && !pname) return null;
-  var p = (no ? projectByNo(no) : null) || (pname ? projectByName(pname) : null);
+  /* 공사코드가 있으면 코드로 먼저 찾고, 이름만 같은 다른 공사(예: 영광군농협 3개 공사)와
+     섞이지 않도록 코드가 비어 있는 프로젝트일 때만 이름으로 이어 붙인다. */
+  var p = no ? projectByNo(no) : null;
+  if (!p && pname) {
+    var byName = projectByName(pname);
+    if (byName && (!no || !str(byName.no).trim())) p = byName;
+  }
   if (p) {
     /* 이미 있는 프로젝트는 빈 칸만 보충한다(중복 생성 금지) */
     var changed = false;
@@ -8691,7 +8697,53 @@ function saveVendorForm(form) {
 /* 업체 결제 내역의 공사코드·공사명을 프로젝트 관리와 맞춘다(없으면 등록) */
 function syncVendorProject(it) {
   if (!it) return null;
-  return ensureProject({ no: it.code, name: it.name, quiet: true });
+  return ensureProject({ no: it.code, name: vendorProjectName(it), quiet: true });
+}
+/* 업체 결제 현황의 공사명 → 프로젝트명 (줄바꿈은 공백 한 칸으로) */
+function vendorProjectName(x) {
+  return str(x && x.name).replace(/\s*\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+/* 업체 결제 현황을 공사 단위로 묶는다.
+   - 공사코드가 있으면 코드가 같은 행을 한 공사로 본다(업체가 여러 곳이어도 1개).
+   - 코드가 없으면 공사명이 같은 행을 한 공사로 본다.
+   - 코드가 다르면 공사명이 같아도 다른 공사로 본다(예: 영광군농협 202601009·202601010·202606002). */
+function vendorProjectGroups() {
+  var map = {}, out = [];
+  arr(vendor.items).forEach(function (x) {
+    var code = str(x.code).trim();
+    var nm = vendorProjectName(x);
+    var key = code ? ('code:' + code) : (nameKey(nm) ? ('name:' + nameKey(nm)) : '');
+    if (!key) return;
+    var g = map[key];
+    if (!g) {
+      g = { key: key, code: code, name: '', count: 0, vendors: {} };
+      map[key] = g;
+      out.push(g);
+    }
+    if (!g.name && nm) g.name = nm;
+    g.count += 1;
+    var vn = str(x.vendor).trim();
+    if (vn) g.vendors[vn] = true;
+  });
+  return out;
+}
+/* 업체 결제 현황의 모든 공사를 프로젝트 관리에 반영한다(중복 없이, 빈 칸만 보충).
+   화면 첫 진입·새로고침, 업체 결제 추가·수정, 엑셀/내장 데이터 불러오기, 백업 불러오기에서 모두 호출된다. */
+function syncVendorProjects(opts) {
+  opts = opts || {};
+  var groups = vendorProjectGroups();
+  var before = db.projects.length;
+  var linked = 0;
+  groups.forEach(function (g) {
+    if (!g.name) return;
+    var p = ensureProject({ no: g.code, name: g.name, quiet: true });
+    if (p) linked += 1;
+  });
+  var added = db.projects.length - before;
+  if (added > 0 && !opts.silent) {
+    toast('업체 결제 현황의 공사 ' + linked + '개를 프로젝트 관리에 등록했습니다.');
+  }
+  return { total: groups.length, linked: linked, added: added };
 }
 function vendorDuplicate(id) {
   var it = vendorById(id);
@@ -8745,8 +8797,11 @@ function vendorStatusAll() {
 function vendorApplyItems(items, label) {
   vendor.items = normalizeVendorItems(items);
   ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses(), sort: '' };
-  saveVendor(); render();
-  toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.');
+  saveVendor();
+  var synced = syncVendorProjects({ silent: true });
+  render();
+  toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.'
+    + (synced.total ? ' (프로젝트 ' + synced.total + '개를 프로젝트 관리에 반영)' : ''));
 }
 function vendorLoadSeed() {
   var seed = window.VENDOR_SEED || [];
@@ -9257,6 +9312,7 @@ function importJSON(file) {
         if (parsed.travelPeople) { travelPeople = normTravelPeople(parsed.travelPeople); saveTravelPeople(); }
         if (Array.isArray(parsed.vendorPayments)) vendor.items = normalizeVendorItems(parsed.vendorPayments);
         saveVendor();
+        syncVendorProjects({ silent: true });
         saveTravel();
         saveDB();
         saveLabor();
@@ -9735,6 +9791,7 @@ window.addEventListener('storage', function (e) {
     render();
   } else if (e && e.key === VENDOR_KEY) {
     vendor = loadVendor();
+    try { syncVendorProjects({ silent: true }); } catch (err) { }
     render();
   }
 });
@@ -9744,6 +9801,9 @@ function init() {
   hydrateIcons();
   if (!ui.calMonth) ui.calMonth = new Date();
   if (!ui.dashMonth) ui.dashMonth = currentMonthKey();
+  /* 새로고침만 해도 업체 결제 현황의 모든 공사가 프로젝트 관리에 들어오도록 1회 동기화한다.
+     이미 등록된 프로젝트는 건드리지 않고 비어 있는 칸만 채우므로 몇 번을 실행해도 늘지 않는다. */
+  try { syncVendorProjects({ silent: true }); } catch (e) { }
   render();
 }
 if (document.readyState === 'loading') {
