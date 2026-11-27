@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="건설업 업무관리 시스템 — 업무·프로젝트·현장·문서·일정 관리 대시보드">
-<title>건설업 업무관리 시스템</title>
+<title>업무관리 시스템</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F1E36'/%3E%3Cg stroke='%23F59E0B' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Cpath d='M10 26V8'/%3E%3Cpath d='M5 8h21'/%3E%3Cpath d='M10 8l4-3'/%3E%3C/g%3E%3Crect x='20' y='8' width='5' height='4' rx='1' fill='%23F59E0B'/%3E%3C/svg%3E">
 <style>
 *,*::before,*::after{box-sizing:border-box}
@@ -2708,7 +2708,7 @@ function renderChrome() {
   if (dt) dt.textContent = fmtFull(todayISO());
   var dot = document.getElementById('bellDot');
   if (dot) dot.className = 'bell-dot' + (notifications().count ? ' on' : '');
-  document.title = meta.title + ' · 건설업 업무관리 시스템';
+  document.title = '업무관리 시스템';
 }
 function render() {
   renderChrome();
