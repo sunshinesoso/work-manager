@@ -424,6 +424,16 @@ ul{margin:0;padding:0;list-style:none}
 .qt{height:32px;padding:0 10px;border-radius:9px;border:1px solid #E2E8F0;background:#F8FAFC;color:#475569;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:.15s}
 .qt:hover{border-color:#9CBDF7;color:#1D4ED8;background:#F4F8FF}
 .qt.clear{background:#fff;color:#94A3B8}
+/* 반복 업무 */
+.recur-box{display:flex;flex-direction:column;gap:9px}
+.recur-sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.recur-sub[hidden]{display:none}
+.recur-inline{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#475569;flex-wrap:wrap}
+.f .recur-inline select{width:auto;min-width:92px;height:34px;font-size:12.5px}
+.recur-inline .recur-note{font-size:11px;font-weight:600;color:#94A3B8}
+.recur-hint{font-size:11px;font-weight:600;color:#7C8BA3;line-height:1.5}
+.recur-hint b{color:#1D4ED8;font-weight:800}
+.badge.recur{background:#F1EDFE;color:#7C3AED}
 .list-time{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;color:#2563EB;background:#EFF6FF;border:1px solid #DCE9FB;border-radius:8px;padding:3px 8px;white-space:nowrap}
 .due-sub{font-size:11px;font-weight:700;color:#64748B;margin-top:2px;white-space:nowrap}
 .week-time{font-size:10.5px;font-weight:800;color:#2563EB;background:#EFF6FB;border-radius:5px;padding:1px 5px;margin-right:4px}
@@ -723,7 +733,8 @@ ul{margin:0;padding:0;list-style:none}
   .head-text .count{font-size:16px}
   .head-icon{width:38px;height:38px}
   .card-head{padding:14px 15px;gap:10px}
-  .list-row{padding:9px 15px;gap:8px}
+  .list-row{padding:9px 15px;gap:8px;flex-wrap:wrap}
+  .list-row .task-title{flex:1 1 96px}
   .week-date{width:66px;font-size:11.5px}
   .form-grid{grid-template-columns:1fr}
   .modal-backdrop{padding:16px 10px}
@@ -1151,6 +1162,159 @@ function ddayTone(n) {
   return 'yellow';
 }
 
+/* ========================= 반복 업무 =========================
+   업무의 반복 규칙: { type:'weekly', weekday:0~6 } | { type:'monthly', day:1~31 } | { type:'monthEnd' }
+   반복 업무를 완료하면 다음 주기 업무를 새로 만들어 준다. */
+var RECUR_KINDS = [['none', '반복 안 함'], ['weekly', '매주'], ['monthly', '매월 특정일'], ['monthEnd', '매월 말일']];
+/* 요일 선택은 월요일부터 (0=일요일) */
+var WEEKDAY_PAIRS = [[1, '월요일'], [2, '화요일'], [3, '수요일'], [4, '목요일'], [5, '금요일'], [6, '토요일'], [0, '일요일']];
+function dayOfMonthOptions(current) {
+  var out = '';
+  for (var d = 1; d <= 31; d++) {
+    out += '<option value="' + d + '"' + (String(d) === String(current) ? ' selected' : '') + '>' + d + '일</option>';
+  }
+  return out;
+}
+function normRecurrence(v) {
+  if (!v || typeof v !== 'object') return null;
+  var type = str(v.type);
+  if (type === 'weekly') {
+    var w = Math.round(Number(v.weekday));
+    if (!isFinite(w) || w < 0 || w > 6) w = 5;
+    return { type: 'weekly', weekday: w };
+  }
+  if (type === 'monthly') {
+    var d = Math.round(Number(v.day));
+    if (!isFinite(d) || d < 1 || d > 31) d = 1;
+    return { type: 'monthly', day: d };
+  }
+  if (type === 'monthEnd') return { type: 'monthEnd' };
+  return null;
+}
+function sameRecurrence(a, b) {
+  var x = normRecurrence(a), y = normRecurrence(b);
+  if (!x || !y) return !x && !y;
+  if (x.type !== y.type) return false;
+  if (x.type === 'weekly') return x.weekday === y.weekday;
+  if (x.type === 'monthly') return x.day === y.day;
+  return true;
+}
+function recurrenceOf(t) { return normRecurrence(t && t.recurrence); }
+function recurrenceLabel(r) {
+  r = normRecurrence(r);
+  if (!r) return '';
+  if (r.type === 'weekly') return '매주 ' + WEEKDAYS[r.weekday] + '요일';
+  if (r.type === 'monthly') return '매월 ' + r.day + '일';
+  return '매월 말일';
+}
+function recurrenceBadge(t) {
+  var r = recurrenceOf(t);
+  if (!r) return '';
+  return '<span class="badge recur" title="반복 업무 · ' + esc(recurrenceLabel(r)) + '">🔁 ' + esc(recurrenceLabel(r)) + '</span>';
+}
+/* 달력 칩·주간 목록처럼 좁은 곳에 쓰는 표시 */
+function recurrenceMark(t) { return recurrenceOf(t) ? '🔁 ' : ''; }
+/* 그 달의 마지막 날 (month 는 0부터) */
+function monthLastDate(y, month) { return new Date(y, month + 1, 0); }
+/* 그 달에 없는 날짜(예: 2월 31일)는 그 달 말일로 보정 */
+function dateInMonth(y, month, day) {
+  var last = monthLastDate(y, month).getDate();
+  var d = Math.min(Math.max(1, Math.round(Number(day) || 1)), last);
+  return new Date(y, month, d);
+}
+/* 규칙상 cur 다음 주기 (결과는 cur 보다 뒤) */
+function recurNextDate(r, cur) {
+  r = normRecurrence(r);
+  if (!r || !cur) return null;
+  var d = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate());
+  if (r.type === 'weekly') {
+    d = addDays(d, 1);
+    var guard = 0;
+    while (d.getDay() !== r.weekday && guard++ < 7) d = addDays(d, 1);
+    return d;
+  }
+  if (r.type === 'monthly') {
+    var c = dateInMonth(d.getFullYear(), d.getMonth(), r.day);
+    if (c.getTime() <= d.getTime()) c = dateInMonth(d.getFullYear(), d.getMonth() + 1, r.day);
+    return c;
+  }
+  var e = monthLastDate(d.getFullYear(), d.getMonth());
+  if (e.getTime() <= d.getTime()) e = monthLastDate(d.getFullYear(), d.getMonth() + 1);
+  return e;
+}
+/* fromISO 당일을 포함해 규칙에 맞는 가장 가까운 날짜 (등록할 때 마감일 기본값) */
+function recurrenceFirstFrom(r, fromISO) {
+  r = normRecurrence(r);
+  if (!r) return '';
+  var from = parseISO(fromISO) || new Date();
+  var d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if (r.type === 'weekly') {
+    var guard = 0;
+    while (d.getDay() !== r.weekday && guard++ < 7) d = addDays(d, 1);
+    return ymd(d);
+  }
+  if (r.type === 'monthly') {
+    var c = dateInMonth(d.getFullYear(), d.getMonth(), r.day);
+    if (c.getTime() < d.getTime()) c = dateInMonth(d.getFullYear(), d.getMonth() + 1, r.day);
+    return ymd(c);
+  }
+  var e = monthLastDate(d.getFullYear(), d.getMonth());
+  if (e.getTime() < d.getTime()) e = monthLastDate(d.getFullYear(), d.getMonth() + 1);
+  return ymd(e);
+}
+/* 완료된 반복 업무의 다음 마감일 — 마감일의 다음 주기부터, 이미 지난 주기는 오늘 이후로 넘긴다 */
+function nextRecurrenceDue(t) {
+  var r = recurrenceOf(t);
+  if (!r) return '';
+  var base = parseISO(isISODate(t.due) ? t.due : todayISO()) || new Date();
+  var today = todayISO();
+  var d = recurNextDate(r, base);
+  var guard = 0;
+  while (d && ymd(d) < today && guard++ < 600) d = recurNextDate(r, d);
+  return d ? ymd(d) : '';
+}
+/* 다음 마감일을 '12.4 (금)' 처럼 (해가 다르면 연도까지) */
+function fmtNextDue(iso) {
+  if (!isISODate(iso)) return '';
+  var s = fmtShort(iso);
+  return iso.slice(0, 4) === String(new Date().getFullYear()) ? s : iso.slice(0, 4) + '년 ' + s;
+}
+/* 반복 업무를 완료하면 다음 주기 업무를 새로 만든다 (같은 제목·규칙·마감일이면 중복 생성하지 않음) */
+function spawnNextRecurrence(t) {
+  var r = recurrenceOf(t);
+  if (!t || !r) return null;
+  var nextDue = nextRecurrenceDue(t);
+  if (!nextDue) return null;
+  if (t.recurrenceSpawned && byId(db.tasks, t.recurrenceSpawned)) return null;
+  var key = nameKey(t.title);
+  for (var i = 0; i < db.tasks.length; i++) {
+    var x = db.tasks[i];
+    if (!x || x.id === t.id || isDone(x)) continue;
+    if (x.due === nextDue && nameKey(x.title) === key && sameRecurrence(x.recurrence, r)) return null;
+  }
+  var nt = normTask({
+    title: t.title, type: t.type, status: 'progress',
+    due: nextDue, dueTime: isTimeHM(t.dueTime) ? t.dueTime : TASK_DEFAULT_DUE_TIME,
+    siteId: t.siteId, projectId: t.projectId, note: t.note,
+    recurrence: r, sourceTaskId: t.id
+  });
+  nt.id = uid('task');
+  nt.createdAt = new Date().toISOString();
+  db.tasks.push(nt);
+  t.recurrenceSpawned = nt.id;
+  return nt;
+}
+/* 모든 완료 경로(체크·상태 변경·일괄 완료·수정 저장)가 함께 쓰는 완료 처리 */
+function completeTaskCore(t) {
+  if (!t || t.status === 'done') return null;
+  t.status = 'done';
+  t.completedAt = nowStamp();
+  return spawnNextRecurrence(t);
+}
+function spawnedToast(spawned) {
+  return spawned ? ' 다음 반복 업무(' + spawned.due + ')가 자동 등록되었어요.' : '';
+}
+
 /* ========================= misc ========================= */
 function str(v) { return v == null ? '' : String(v); }
 function esc(v) {
@@ -1291,6 +1455,10 @@ function normTask(t) {
     projectId: safeRef(t.projectId),
     note: str(t.note).slice(0, 1000),
     completedAt: isISODateTime(t.completedAt) ? t.completedAt : '',
+    /* 반복 업무 — 반복하지 않으면 null */
+    recurrence: normRecurrence(t.recurrence),
+    recurrenceSpawned: safeRef(t.recurrenceSpawned),
+    sourceTaskId: safeRef(t.sourceTaskId),
     createdAt: str(t.createdAt) || new Date().toISOString()
   };
 }
@@ -1567,14 +1735,14 @@ function bulkNames(section, ids) {
 function bulkComplete(section) {
   var ids = selIds(section);
   if (!ids.length) { toast('선택된 항목이 없습니다.', 'alert'); return; }
-  var changed = 0, skipped = 0;
+  var changed = 0, skipped = 0, spawnedDue = [];
   if (section === 'tasks') {
     ids.forEach(function (id) {
       var t = byId(db.tasks, id);
       if (!t) return;
       if (t.status === 'done') { skipped++; return; }
-      t.status = 'done';
-      t.completedAt = nowStamp();
+      var nt = completeTaskCore(t);
+      if (nt) spawnedDue.push(nt.due);
       changed++;
     });
   } else if (section === 'docs') {
@@ -1608,7 +1776,9 @@ function bulkComplete(section) {
   saveDB();
   render();
   var labels = { tasks: '업무', projects: '프로젝트', sites: '현장', docs: '문서', events: '일정' };
-  toast(labels[section] + ' ' + changed + '건을 ' + (section === 'docs' ? '제출완료로' : '완료 처리했습니다.') + (skipped ? ' (이미 완료 ' + skipped + '건 제외)' : ''));
+  var spawnedMsg = spawnedDue.length
+    ? ' 다음 반복 업무 ' + spawnedDue.length + '건(' + spawnedDue.join(', ') + ')이 자동 등록되었습니다.' : '';
+  toast(labels[section] + ' ' + changed + '건을 ' + (section === 'docs' ? '제출완료로' : '완료 처리했습니다.') + (skipped ? ' (이미 완료 ' + skipped + '건 제외)' : '') + spawnedMsg);
 }
 function bulkDelete(section) {
   var ids = selIds(section);
@@ -1958,7 +2128,7 @@ function todayRow(t) {
     ? '<span class="list-time">' + icon('clock', 13) + ' ' + esc(fmtDue(t)) + '</span>' : '';
   return '<div class="list-row ' + (done ? 'is-done' : '') + '" data-action="edit-task" data-id="' + t.id + '">'
     + '<input type="checkbox" class="chk" data-action="toggle-task" data-id="' + t.id + '" ' + (done ? 'checked' : '') + ' aria-label="' + esc(t.title) + ' 완료 처리">'
-    + '<span class="task-title" title="' + esc(t.title) + '">' + esc(t.title) + '</span>'
+    + '<span class="task-title" title="' + esc(t.title) + '">' + recurrenceMark(t) + esc(t.title) + '</span>'
     + typeBadge(t.type)
     + when
     + '<span class="badge ' + badgeCls + '">' + badgeTxt + '</span>'
@@ -1990,7 +2160,7 @@ function todoCard() {
 function todoRow(t) {
   return '<div class="list-row" data-action="edit-task" data-id="' + t.id + '">'
     + '<input type="checkbox" class="chk" data-action="toggle-task" data-id="' + t.id + '" aria-label="' + esc(t.title) + ' 완료 처리">'
-    + '<span class="task-title" title="' + esc(t.title) + '">' + esc(t.title) + '</span>'
+    + '<span class="task-title" title="' + esc(t.title) + '">' + recurrenceMark(t) + esc(t.title) + '</span>'
     + typeBadge(t.type)
     + (t.due ? todoDueBadge(t) : statusBadge(t.status))
     + '</div>';
@@ -2015,7 +2185,7 @@ function doneRow(t) {
   var when = t.completedAt ? ('완료 ' + fmtDone(t.completedAt)) : (t.due ? ('마감 ' + fmtDue(t)) : '');
   return '<div class="list-row done-row" data-action="edit-task" data-id="' + t.id + '">'
     + '<span class="done-check">' + icon('check', 13) + '</span>'
-    + '<span class="task-title" title="' + esc(t.title) + '">' + esc(t.title) + '</span>'
+    + '<span class="task-title" title="' + esc(t.title) + '">' + recurrenceMark(t) + esc(t.title) + '</span>'
     + (where ? '<span class="done-where" title="' + esc(where) + '">' + esc(where) + '</span>' : '')
     + typeBadge(t.type)
     + (when ? '<span class="done-date">' + icon('calendar', 12) + ' ' + when + '</span>' : '')
@@ -2063,7 +2233,7 @@ function weekCard() {
       items.push({ kind: 'event', id: e.id, title: e.title, type: e.type });
     });
     db.tasks.filter(function (t) { return t.due === iso; }).sort(taskSort).forEach(function (t) {
-      items.push({ kind: 'task', id: t.id, title: t.title, type: t.type, done: isDone(t), overdue: isOverdue(t), time: isTimeHM(t.dueTime) ? fmtTime(t.dueTime) : '' });
+      items.push({ kind: 'task', id: t.id, title: t.title, type: t.type, done: isDone(t), overdue: isOverdue(t), recur: !!recurrenceOf(t), time: isTimeHM(t.dueTime) ? fmtTime(t.dueTime) : '' });
     });
     total += items.length;
     if (!items.length) {
@@ -2074,7 +2244,7 @@ function weekCard() {
     items.slice(0, 2).forEach(function (it, idx) {
       rows += '<button class="' + cls + '" data-action="' + (it.kind === 'task' ? 'edit-task' : 'edit-event') + '" data-id="' + it.id + '">'
         + '<span class="week-date">' + (idx === 0 ? fmtShort(iso) : '') + '</span>'
-        + '<span class="week-title ' + (it.done ? 'done' : '') + '">' + (it.time ? '<span class="week-time">' + esc(it.time) + '</span>' : '') + esc(it.title) + (it.overdue ? ' <b class="t-red" style="font-size:11px">지연</b>' : '') + '</span>'
+        + '<span class="week-title ' + (it.done ? 'done' : '') + '">' + (it.time ? '<span class="week-time">' + esc(it.time) + '</span>' : '') + (it.recur ? '🔁 ' : '') + esc(it.title) + (it.overdue ? ' <b class="t-red" style="font-size:11px">지연</b>' : '') + '</span>'
         + typeBadge(it.type)
         + '</button>';
     });
@@ -2265,6 +2435,7 @@ function taskTableRow(t) {
   return '<tr' + (selHas('tasks', t.id) ? ' class="is-selected"' : '') + ' data-row-id="' + t.id + '">'
     + '<td class="sel-cell">' + bulkCheckbox('tasks', t.id, t.title) + '</td>'
     + '<td><div class="cell-title"><span class="txt" title="' + esc(t.title) + '">' + esc(t.title) + '</span>'
+    + recurrenceBadge(t)
     + (t.note ? '<span class="muted" title="' + esc(t.note) + '">' + icon('file', 13) + '</span>' : '') + '</div>'
     + (isDone(t) && t.completedAt ? '<div class="due-sub">' + icon('check', 11) + ' 완료 ' + esc(fmtDone(t.completedAt)) + '</div>' : '') + '</td>'
     + '<td>' + typeBadge(t.type) + '</td>'
@@ -2666,7 +2837,7 @@ function calCell(iso, monthIdx) {
   });
   db.tasks.filter(function (t) { return t.due === iso; }).sort(taskSort).forEach(function (t) {
     var cls = 'chip task' + (isDone(t) ? ' done' : '') + (isOverdue(t) ? ' overdue' : '');
-    items.push('<span class="' + cls + '">' + (isTimeHM(t.dueTime) ? '<span class="chip-time">' + esc(t.dueTime) + '</span>' : '') + esc(t.title) + '</span>');
+    items.push('<span class="' + cls + '">' + (isTimeHM(t.dueTime) ? '<span class="chip-time">' + esc(t.dueTime) + '</span>' : '') + (recurrenceOf(t) ? '🔁 ' : '') + esc(t.title) + '</span>');
   });
   var shown = items.slice(0, 3).join('');
   if (items.length > 3) shown += '<span class="chip more">+' + (items.length - 3) + '건</span>';
@@ -3020,7 +3191,7 @@ function renderSearchPop(q) {
     html += '<div class="sr-group">업무</div>' + res.tasks.map(function (t) {
       return '<button class="sr-item" data-action="edit-task" data-id="' + t.id + '">' + icon('clipboard', 15)
         + '<span class="sr-title">' + esc(t.title) + '</span>'
-        + '<span class="sr-meta">' + esc(TASK_STATUS[t.status].label) + (t.due ? ' · ' + fmtDot(t.due) + (isTimeHM(t.dueTime) ? ' ' + esc(fmtTime(t.dueTime)) : '') : '') + '</span></button>';
+        + '<span class="sr-meta">' + (recurrenceOf(t) ? '🔁 ' : '') + esc(TASK_STATUS[t.status].label) + (t.due ? ' · ' + fmtDot(t.due) + (isTimeHM(t.dueTime) ? ' ' + esc(fmtTime(t.dueTime)) : '') : '') + '</span></button>';
     }).join('');
   }
   if (res.docs.length) {
@@ -3165,6 +3336,12 @@ function openTaskModal(id, preset) {
   };
   var dueVal = isISODate(d.due) ? d.due : (t ? '' : todayISO());
   var timeVal = isTimeHM(d.dueTime) ? d.dueTime : TASK_DEFAULT_DUE_TIME;
+  /* 반복 설정 기본값 — 마감일 요일, 마감일의 일, 없으면 금요일·1일 */
+  var rec = recurrenceOf(d);
+  var recKind = rec ? rec.type : 'none';
+  var dueDate = parseISO(dueVal);
+  var recWeekday = rec && rec.type === 'weekly' ? rec.weekday : (dueDate ? dueDate.getDay() : 5);
+  var recDay = rec && rec.type === 'monthly' ? rec.day : (isISODate(dueVal) ? Number(dueVal.slice(8, 10)) : 1);
   var body = '<form id="taskForm" class="modal-body" data-id="' + (t ? t.id : '') + '" novalidate><div class="form-grid">'
     + '<div class="f full"><label for="taskTitle">업무명 <span class="req">*</span></label>'
     + '<input id="taskTitle" name="title" maxlength="80" value="' + esc(d.title) + '" placeholder="예) A현장 지급요청서 작성"></div>'
@@ -3179,12 +3356,79 @@ function openTaskModal(id, preset) {
     + '<button type="button" class="qt" data-action="set-due-time" data-time="17:30">오후 5:30</button>'
     + '<button type="button" class="qt clear" data-action="clear-due-time">지우기</button>'
     + '</div></div></div>'
+    + '<div class="f full"><label for="taskRecur">반복 설정</label><div class="recur-box">'
+    + '<select id="taskRecur" name="recurrence" data-recur-kind aria-label="반복 설정">' + options(RECUR_KINDS, recKind) + '</select>'
+    + '<div class="recur-sub" data-recur-sub="weekly"' + (recKind === 'weekly' ? '' : ' hidden') + '>'
+    + '<div class="recur-inline"><span>매주</span>'
+    + '<select name="recurWeekday" aria-label="반복할 요일">' + options(WEEKDAY_PAIRS, recWeekday) + '</select>'
+    + '<span>에 반복</span></div></div>'
+    + '<div class="recur-sub" data-recur-sub="monthly"' + (recKind === 'monthly' ? '' : ' hidden') + '>'
+    + '<div class="recur-inline"><span>매월</span>'
+    + '<select name="recurDay" aria-label="반복할 일">' + dayOfMonthOptions(recDay) + '</select>'
+    + '<span class="recur-note">그 달에 없는 날짜는 말일로 맞춰집니다</span></div></div>'
+    + '<div class="recur-sub" data-recur-sub="monthEnd"' + (recKind === 'monthEnd' ? '' : ' hidden') + '>'
+    + '<div class="recur-inline"><span class="recur-note">매달 마지막 날(28·29·30·31일)에 반복합니다</span></div></div>'
+    + '<div class="recur-hint" data-recur-hint></div>'
+    + '</div></div>'
     + '<div class="f"><label>현장</label><select name="siteId">' + siteOptions(d.siteId) + '</select></div>'
     + '<div class="f"><label>프로젝트</label><select name="projectId">' + projectOptions(d.projectId) + '</select></div>'
     + newProjectField()
     + '<div class="f"><label>메모</label><input name="note" maxlength="200" value="' + esc(d.note) + '" placeholder="간단한 메모"></div>'
     + '</div></form>';
   openModal({ title: t ? '업무 수정' : '업무 등록', body: body, foot: formFoot(t ? '저장' : '등록', 'taskForm') });
+  var form = document.getElementById('taskForm');
+  if (form) { updateRecurHint(form); if (recKind !== 'none') applyRecurUI(form, false); }
+}
+/* 폼에서 고른 반복 규칙 읽기 (반복 안 함이면 null) */
+function recurrenceFromForm(form) {
+  if (!form) return null;
+  var kind = fv(form, 'recurrence');
+  if (kind === 'weekly') {
+    var w = Number(fv(form, 'recurWeekday'));
+    return normRecurrence({ type: 'weekly', weekday: isFinite(w) ? w : 5 });
+  }
+  if (kind === 'monthly') {
+    var d = Number(fv(form, 'recurDay'));
+    return normRecurrence({ type: 'monthly', day: isFinite(d) ? d : 1 });
+  }
+  if (kind === 'monthEnd') return { type: 'monthEnd' };
+  return null;
+}
+/* 반복 설정에 맞는 입력칸만 보여 주고, 등록 중이면 마감일을 규칙 날짜로 맞춘다 */
+function applyRecurUI(form, align) {
+  if (!form || form.id !== 'taskForm') return;
+  var kind = fv(form, 'recurrence');
+  ['weekly', 'monthly', 'monthEnd'].forEach(function (k) {
+    var box = form.querySelector('[data-recur-sub="' + k + '"]');
+    if (box) box.hidden = kind !== k;
+  });
+  if (align) alignTaskDueToRecurrence(form);
+  updateRecurHint(form);
+}
+/* 마감일이 비어 있거나 오늘이면(직접 고른 날짜가 아니면) 규칙에 맞는 가장 가까운 날짜로 맞춘다 */
+function alignTaskDueToRecurrence(form) {
+  var r = recurrenceFromForm(form);
+  if (!r) return;
+  var dueEl = form.elements.due;
+  if (!dueEl) return;
+  var cur = str(dueEl.value).trim();
+  var auto = form.getAttribute('data-auto-due') === '1';
+  if (cur && !auto && cur !== todayISO()) return;
+  var first = recurrenceFirstFrom(r, todayISO());
+  if (!first || first === cur) return;
+  dueEl.value = first;
+  form.setAttribute('data-auto-due', '1');
+}
+function updateRecurHint(form) {
+  var el = form && form.querySelector ? form.querySelector('[data-recur-hint]') : null;
+  if (!el) return;
+  var r = recurrenceFromForm(form);
+  if (!r) { el.innerHTML = '한 번만 처리하는 업무입니다.'; return; }
+  var dueEl = form.elements.due;
+  var due = dueEl ? str(dueEl.value).trim() : '';
+  var next = nextRecurrenceDue({ due: isISODate(due) ? due : todayISO(), recurrence: r });
+  el.innerHTML = '🔁 ' + esc(recurrenceLabel(r)) + ' 반복'
+    + (next ? ' · 완료하면 다음 업무가 <b>' + esc(fmtNextDue(next)) + '</b> 마감으로 자동 등록됩니다' : '');
 }
 function saveTaskForm(form) {
   var id = form.getAttribute('data-id');
@@ -3209,22 +3453,28 @@ function saveTaskForm(form) {
     dueTime: dueTime,
     siteId: siteId,
     projectId: projectId,
-    note: fv(form, 'note')
+    note: fv(form, 'note'),
+    recurrence: recurrenceFromForm(form)
   };
   if (id) {
     var t = prev;
     if (!t) { closeModal(); render(); return; }
+    var wasDone = t.status === 'done';
     Object.keys(payload).forEach(function (k) { t[k] = payload[k]; });
-    if (t.status === 'done') { if (!isISODateTime(t.completedAt)) t.completedAt = nowStamp(); }
-    else t.completedAt = '';
-    toast('업무를 수정했습니다.');
+    var spawnedEdit = null;
+    if (t.status === 'done') {
+      if (!isISODateTime(t.completedAt)) t.completedAt = nowStamp();
+      if (!wasDone) spawnedEdit = spawnNextRecurrence(t);
+    } else t.completedAt = '';
+    toast('업무를 수정했습니다.' + spawnedToast(spawnedEdit));
   } else {
     var nt = normTask(payload);
     nt.id = uid('task');
     nt.createdAt = new Date().toISOString();
     if (nt.status === 'done') nt.completedAt = nowStamp();
     db.tasks.push(nt);
-    toast('업무를 등록했습니다.');
+    var spawnedNew = nt.status === 'done' ? spawnNextRecurrence(nt) : null;
+    toast('업무를 등록했습니다.' + spawnedToast(spawnedNew));
   }
   saveDB();
   closeModal();
@@ -3668,6 +3918,7 @@ function openDayModal(iso) {
   var taskRows = tasks.map(function (t) {
     return '<div class="detail-row">' + statusBadge(t.status)
       + '<span class="t">' + esc(t.title) + '</span>'
+      + recurrenceBadge(t)
       + (isTimeHM(t.dueTime) ? '<span class="due-sub">' + esc(fmtTime(t.dueTime)) + '</span>' : '')
       + '<button class="icon-sm" data-action="edit-task" data-id="' + t.id + '" aria-label="업무 수정">' + icon('edit', 14) + '</button></div>';
   }).join('');
@@ -8248,22 +8499,29 @@ function viewTravel() {
 function toggleTask(id, checked) {
   var t = byId(db.tasks, id);
   if (!t) return;
-  if (checked) { t.status = 'done'; t.completedAt = nowStamp(); }
+  var spawned = null;
+  if (checked) { spawned = completeTaskCore(t); }
   else { t.status = 'progress'; t.completedAt = ''; }
   saveDB();
   render();
-  toast(checked ? '업무를 완료 처리했습니다.' : '업무를 미완료로 되돌렸습니다.');
+  toast(checked
+    ? ('업무를 완료 처리했습니다.' + spawnedToast(spawned))
+    : '업무를 미완료로 되돌렸습니다.');
 }
 function setTaskStatus(id, status) {
   var t = byId(db.tasks, id);
   if (!t || !TASK_STATUS[status]) return;
-  var wasDone = t.status === 'done';
-  t.status = status;
-  if (status === 'done') { if (!wasDone || !t.completedAt) t.completedAt = nowStamp(); }
-  else t.completedAt = '';
+  var spawned = null;
+  if (status === 'done') {
+    if (t.status === 'done') { if (!t.completedAt) t.completedAt = nowStamp(); }
+    else spawned = completeTaskCore(t);
+  } else {
+    t.status = status;
+    t.completedAt = '';
+  }
   saveDB();
   render();
-  toast('상태를 "' + TASK_STATUS[status].label + '"(으)로 변경했습니다.');
+  toast('상태를 "' + TASK_STATUS[status].label + '"(으)로 변경했습니다.' + spawnedToast(spawned));
 }
 function setDocStatus(id, status) {
   var d = byId(db.docs, id);
@@ -9838,6 +10096,7 @@ document.addEventListener('click', function (e) {
         tf.elements.dueTime.value = '';
         if (tf.setAttribute) tf.setAttribute('data-notime', '1');
       }
+      if (tf.id === 'taskForm') updateRecurHint(tf);
       break;
     }
     case 'confirm-ok': {
@@ -9990,6 +10249,18 @@ document.addEventListener('click', function (e) {
 document.addEventListener('change', function (e) {
   var el = e.target;
   if (!el || el.nodeType !== 1) return;
+  /* 반복 설정 — 고른 규칙의 입력칸만 보이고, 등록 중이면 마감일도 규칙 날짜로 맞춘다 */
+  if (el.hasAttribute && el.hasAttribute('data-recur-kind')) { applyRecurUI(el.form, true); return; }
+  if (el.name === 'recurWeekday' || el.name === 'recurDay') { applyRecurUI(el.form, true); return; }
+  /* 마감일을 직접 고쳤으면 자동으로 맞춘 날짜로 덮어쓰지 않는다 */
+  if (el.id === 'taskDue') {
+    var tForm = el.closest ? el.closest('form') : null;
+    if (tForm && tForm.id === 'taskForm') {
+      if (tForm.removeAttribute) tForm.removeAttribute('data-auto-due');
+      updateRecurHint(tForm);
+    }
+    return;
+  }
   if (el.id === 'importFile') {
     if (el.files && el.files[0]) importJSON(el.files[0]);
     el.value = '';
