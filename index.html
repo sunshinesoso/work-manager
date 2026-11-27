@@ -361,6 +361,14 @@ ul{margin:0;padding:0;list-style:none}
 .data-stats div{display:flex;justify-content:space-between;font-size:12.5px;padding:8px 11px;background:#F8FAFC;border-radius:9px;color:#64748B}
 .data-stats b{color:#0F1E36}
 .set-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.menu-vis-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:14px}
+.menu-vis-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid #E9EEF5;border-radius:10px;font-size:13px;font-weight:700;color:#334155;cursor:pointer;background:#fff;transition:.15s}
+.menu-vis-row:hover{background:#F8FAFF;border-color:#CBD9EE}
+.menu-vis-row.is-locked{opacity:.7;cursor:default;background:#F8FAFC}
+.menu-vis-ic{display:flex;color:#2563EB}
+.menu-vis-name{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
+.menu-vis-row .chk{margin:0;flex:0 0 auto}
+.menu-vis-row .chk:disabled{cursor:not-allowed}
 .danger-zone{border-color:#F6D5D5;background:linear-gradient(180deg,#FFF9F9,#fff)}
 .danger-zone h3{color:#B91C1C}
 .note{font-size:11.5px;color:#94A3B8;margin-top:10px;line-height:1.6}
@@ -465,6 +473,9 @@ ul{margin:0;padding:0;list-style:none}
 .labor-sec-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:15px 18px;border-bottom:1px solid #F1F4F9}
 .labor-sec-head h3{font-size:15px;font-weight:800;letter-spacing:-.3px;flex:1;min-width:120px;display:flex;align-items:center;gap:7px}
 .labor-sec-head .sub{font-size:11.5px;color:#94A3B8;font-weight:600}
+.labor-db-search{height:32px;padding:0 10px;border:1px solid #E6EBF2;border-radius:9px;background:#fff;font-size:12.5px;font-weight:600;color:#334155;min-width:130px;flex:0 1 200px;outline:none}
+.labor-db-search::placeholder{color:#A3B0C2;font-weight:600}
+.labor-db-search:focus{border-color:#9CBDF7;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .labor-sec .bulk-wrap{padding:12px 16px 0}
 .labor-sec .table-wrap{overflow:auto}
 .labor-table{width:100%;border-collapse:collapse;min-width:760px}
@@ -708,6 +719,9 @@ ul{margin:0;padding:0;list-style:none}
 @media (max-width:520px){
   .card-head .head-actions{width:100%;margin-left:0;justify-content:flex-end;gap:8px}
   .dday .dday-date{display:none}
+}
+@media (max-width:640px){
+  .menu-vis-list{grid-template-columns:1fr}
 }
 @media (max-width:640px){
   .bulk-hint{display:none}
@@ -1153,6 +1167,7 @@ function emptyDB() {
   return {
     version: SCHEMA_VERSION,
     user: { name: 'ny', initials: 'ny' },
+    settings: { visibleMenus: defaultMenuVisibility() },
     tasks: [],
     projects: [],
     sites: [],
@@ -1160,6 +1175,19 @@ function emptyDB() {
     events: [],
     updatedAt: null
   };
+}
+/* 사이드바 메뉴 표시 기본값 — 대시보드·설정은 항상 표시 */
+function defaultMenuVisibility() {
+  var m = {};
+  for (var i = 0; i < NAV_ITEMS.length; i++) m[NAV_ITEMS[i].view] = true;
+  m.dashboard = true;
+  m.settings = true;
+  return m;
+}
+function menuVisible(view) {
+  if (!view || view === 'dashboard' || view === 'settings') return true;
+  var vm = db && db.settings ? db.settings.visibleMenus : null;
+  return !vm || vm[view] !== false;
 }
 function normTask(t) {
   t = t || {};
@@ -1185,6 +1213,7 @@ function normProject(p) {
     name: str(p.name).slice(0, 100),
     client: str(p.client).slice(0, 100),
     siteId: safeRef(p.siteId),
+    contract: isISODate(p.contract) ? p.contract : '',
     start: isISODate(p.start) ? p.start : '',
     end: isISODate(p.end) ? p.end : '',
     status: SITE_STATUS[p.status] ? p.status : 'active',
@@ -1216,6 +1245,7 @@ function normDoc(d) {
     siteId: safeRef(d.siteId),
     category: cat,
     status: DOC_STATUS[d.status] ? d.status : 'writing',
+    projectId: safeRef(d.projectId),
     due: isISODate(d.due) ? d.due : '',
     memo: str(d.memo).slice(0, 1000),
     createdAt: str(d.createdAt) || new Date().toISOString()
@@ -1228,6 +1258,7 @@ function normEvent(e) {
     title: str(e.title).slice(0, 120),
     date: isISODate(e.date) ? e.date : todayISO(),
     type: e.type === 'personal' ? 'personal' : 'company',
+    projectId: safeRef(e.projectId),
     done: e.done === true || e.done === 1,
     memo: str(e.memo).slice(0, 1000),
     createdAt: str(e.createdAt) || new Date().toISOString()
@@ -1245,6 +1276,15 @@ function normalizeDB(raw) {
   d.sites = arr(raw.sites).map(normSite).filter(function (s) { return s.name; });
   d.docs = arr(raw.docs).map(normDoc).filter(function (x) { return x.name; });
   d.events = arr(raw.events).map(normEvent).filter(function (e) { return e.title; });
+  var vm = raw.settings && raw.settings.visibleMenus;
+  if (vm && typeof vm === 'object') {
+    var keys = Object.keys(d.settings.visibleMenus);
+    for (var i = 0; i < keys.length; i++) {
+      if (typeof vm[keys[i]] === 'boolean') d.settings.visibleMenus[keys[i]] = vm[keys[i]];
+    }
+  }
+  d.settings.visibleMenus.dashboard = true;
+  d.settings.visibleMenus.settings = true;
   d.updatedAt = str(raw.updatedAt) || null;
   return d;
 }
@@ -1281,6 +1321,7 @@ var ui = {
   laborTab: 'ledger',
   laborEditing: false,
   laborFind: null,
+  laborWorkerQ: '',
   laborSel: {},
   travelId: null,
   travelEditing: false,
@@ -2147,6 +2188,7 @@ function projectCard(p) {
     + '</div>'
     + '<div class="meta-list">'
     + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
+    + (p.contract ? '<div><span>계약일</span><b>' + fmtDot(p.contract) + '</b></div>' : '')
     + '<div><span>현장</span><b>' + (p.siteId ? esc(siteName(p.siteId)) : '-') + '</b></div>'
     + '<div><span>기간</span><b>' + period + '</b></div>'
     + '<div><span>연결 업무</span><b>' + st.total + '건 (완료 ' + st.done + '건)</b></div>'
@@ -2533,6 +2575,7 @@ function viewSettings() {
     + '<div class="set-actions"><button class="btn btn-danger" data-action="reset-data">' + icon('trash', 15) + ' 전체 데이터 초기화</button></div>'
     + '</div>'
     + '</div>'
+    + menuVisibilityCard()
     + '<div class="set-card" style="margin-top:16px">'
     + '<h3>' + icon('check-circle', 17) + ' 이용 안내</h3>'
     + '<p class="set-desc">· 이 앱은 단일 HTML 파일로 동작하며, 인터넷 연결 없이 사용할 수 있습니다.<br>'
@@ -2544,6 +2587,47 @@ function viewSettings() {
 /* =========================================================
    건설업 업무관리 시스템 — ui / actions
    ========================================================= */
+function menuVisibilityCard() {
+  var rows = NAV_ITEMS.map(function (it) {
+    var locked = it.view === 'dashboard';
+    var on = locked ? true : menuVisible(it.view);
+    return '<label class="menu-vis-row' + (locked ? ' is-locked' : '') + '">'
+      + '<span class="menu-vis-ic">' + icon(it.icon, 16) + '</span>'
+      + '<span class="menu-vis-name">' + esc(it.label) + (locked ? ' <span class="badge gray">항상 표시</span>' : '') + '</span>'
+      + '<input type="checkbox" class="chk" data-action="toggle-menu-vis" data-view="' + it.view + '"'
+      + (on ? ' checked' : '') + (locked ? ' disabled' : '') + ' aria-label="' + esc(it.label) + ' 메뉴 표시">'
+      + '</label>';
+  }).join('');
+  rows += '<label class="menu-vis-row is-locked">'
+    + '<span class="menu-vis-ic">' + icon('settings', 16) + '</span>'
+    + '<span class="menu-vis-name">설정 <span class="badge gray">항상 표시</span></span>'
+    + '<input type="checkbox" class="chk" checked disabled aria-label="설정 메뉴 표시">'
+    + '</label>';
+  var hidden = NAV_ITEMS.filter(function (it) { return it.view !== 'dashboard' && !menuVisible(it.view); }).length;
+  return '<div class="set-card" style="margin-top:16px">'
+    + '<h3>' + icon('dashboard', 17) + ' 사이드바 메뉴 표시 설정</h3>'
+    + '<p class="set-desc">체크를 끄면 왼쪽 메뉴에서 바로 사라집니다(휴대폰 메뉴 포함). 대시보드와 설정은 설정에 들어올 수 있도록 항상 표시됩니다.</p>'
+    + '<div class="menu-vis-list">' + rows + '</div>'
+    + '<div class="set-actions">'
+    + '<button class="btn btn-ghost" data-action="show-all-menus">' + icon('refresh', 15) + ' 모두 표시</button>'
+    + '<span class="note" style="align-self:center;margin:0">' + (hidden ? hidden + '개 메뉴 숨김' : '모든 메뉴 표시 중') + '</span>'
+    + '</div>'
+    + '</div>';
+}
+function setMenuVisible(view, on) {
+  if (!view || view === 'dashboard' || view === 'settings') return;
+  if (!db.settings || !db.settings.visibleMenus) db.settings = { visibleMenus: defaultMenuVisibility() };
+  db.settings.visibleMenus[view] = !!on;
+  saveDB();
+  render();
+  toast((VIEW_META[view] ? VIEW_META[view].title : view) + (on ? ' 메뉴를 표시합니다.' : ' 메뉴를 숨겼습니다.'));
+}
+function showAllMenus() {
+  db.settings = { visibleMenus: defaultMenuVisibility() };
+  saveDB();
+  render();
+  toast('모든 메뉴를 다시 표시합니다.');
+}
 
 /* ------------------------- chrome ------------------------- */
 function hydrateIcons() {
@@ -2560,7 +2644,7 @@ function renderChrome() {
   if (titleEl) titleEl.textContent = meta.title;
   var nav = document.getElementById('navList');
   if (nav) {
-    nav.innerHTML = NAV_ITEMS.map(function (item) {
+    nav.innerHTML = NAV_ITEMS.filter(function (item) { return menuVisible(item.view); }).map(function (item) {
       return '<button class="nav-item' + (ui.view === item.view ? ' active' : '') + '" data-action="go" data-view="' + item.view + '">'
         + icon(item.icon, 18) + '<span>' + esc(item.label) + '</span>' + icon('chevron-right', 13, 'chev') + '</button>';
     }).join('');
@@ -2632,6 +2716,7 @@ function go(view, opts) {
   if (view === 'calendar' && !ui.calMonth) ui.calMonth = new Date();
   if (view === 'labor') {
     ui.laborEditing = false;
+    ui.laborWorkerQ = '';
     if (!ui.laborMonth) ui.laborMonth = currentMonthKey();
     if (!labor.months[ui.laborMonth]) labor.months[ui.laborMonth] = emptyLaborMonth(ui.laborMonth);
   }
@@ -2800,6 +2885,8 @@ function formFoot(submitLabel, formId) {
 }
 
 /* ------------------------- task form ------------------------- */
+/* 마감 시간을 따로 고르지 않으면 오후 5시 30분으로 저장한다 */
+var TASK_DEFAULT_DUE_TIME = '17:30';
 function openTaskModal(id, preset) {
   var t = id ? byId(db.tasks, id) : null;
   if (id && !t) return;
@@ -2811,7 +2898,7 @@ function openTaskModal(id, preset) {
     siteId: preset.siteId || '', projectId: preset.projectId || '', note: ''
   };
   var dueVal = isISODate(d.due) ? d.due : (t ? '' : todayISO());
-  var timeVal = isTimeHM(d.dueTime) ? d.dueTime : '';
+  var timeVal = isTimeHM(d.dueTime) ? d.dueTime : TASK_DEFAULT_DUE_TIME;
   var body = '<form id="taskForm" class="modal-body" data-id="' + (t ? t.id : '') + '" novalidate><div class="form-grid">'
     + '<div class="f full"><label for="taskTitle">업무명 <span class="req">*</span></label>'
     + '<input id="taskTitle" name="title" maxlength="80" value="' + esc(d.title) + '" placeholder="예) A현장 지급요청서 작성"></div>'
@@ -2820,7 +2907,7 @@ function openTaskModal(id, preset) {
     + '<div class="f full"><label for="taskDue">마감일 <span class="opt">(비우면 오늘로 저장)</span></label>'
     + '<div class="due-row">'
     + '<input id="taskDue" type="date" name="due" value="' + esc(dueVal) + '">'
-    + '<input id="taskDueTime" type="time" name="dueTime" value="' + esc(timeVal) + '" aria-label="마감 시간(선택)">'
+    + '<input id="taskDueTime" type="time" name="dueTime" value="' + esc(timeVal) + '" aria-label="마감 시간(기본 오후 5:30)">'
     + '<div class="qt-wrap">'
     + '<button type="button" class="qt" data-action="set-due-time" data-time="12:00">오전 12:00</button>'
     + '<button type="button" class="qt" data-action="set-due-time" data-time="17:30">오후 5:30</button>'
@@ -2828,6 +2915,7 @@ function openTaskModal(id, preset) {
     + '</div></div></div>'
     + '<div class="f"><label>현장</label><select name="siteId">' + siteOptions(d.siteId) + '</select></div>'
     + '<div class="f"><label>프로젝트</label><select name="projectId">' + projectOptions(d.projectId) + '</select></div>'
+    + newProjectField()
     + '<div class="f"><label>메모</label><input name="note" maxlength="200" value="' + esc(d.note) + '" placeholder="간단한 메모"></div>'
     + '</div></form>';
   openModal({ title: t ? '업무 수정' : '업무 등록', body: body, foot: formFoot(t ? '저장' : '등록', 'taskForm') });
@@ -2843,14 +2931,18 @@ function saveTaskForm(form) {
   /* 마감일을 비우면: 새 업무는 오늘, 수정은 저장된 날짜 유지 */
   var dueVal = isISODate(due) ? due : (prev ? (isISODate(prev.due) ? prev.due : '') : todayISO());
   var dueTime = isTimeHM(fv(form, 'dueTime')) ? fv(form, 'dueTime') : '';
+  /* 날짜만 정하고 시간을 고르지 않았으면 오후 5:30 마감 ('지우기'를 누른 경우만 시간 없이 저장) */
+  if (!dueTime && dueVal && form.getAttribute('data-notime') !== '1') dueTime = TASK_DEFAULT_DUE_TIME;
+  var siteId = fv(form, 'siteId');
+  var projectId = resolveProjectPick(form, fv(form, 'projectId'), siteId ? siteName(siteId) : '');
   var payload = {
     title: title,
     type: fv(form, 'type') === 'personal' ? 'personal' : 'company',
     status: status,
     due: dueVal,
     dueTime: dueTime,
-    siteId: fv(form, 'siteId'),
-    projectId: fv(form, 'projectId'),
+    siteId: siteId,
+    projectId: projectId,
     note: fv(form, 'note')
   };
   if (id) {
@@ -2874,18 +2966,112 @@ function saveTaskForm(form) {
 }
 
 /* ------------------------- project form ------------------------- */
+/* =========================================================
+   새 프로젝트·현장 자동 등록 (모든 메뉴 공통)
+   어느 화면에서든 새 프로젝트(공사)를 입력하면 프로젝트 관리에 등록하고,
+   발주처명과 같은 현장이 없으면 현장관리에도 만들어 연결한다.
+   ========================================================= */
+function nameKey(v) { return str(v).replace(/\s+/g, '').toLowerCase(); }
+function projectByNo(no) {
+  var k = str(no).trim();
+  if (!k) return null;
+  for (var i = 0; i < db.projects.length; i++) if (str(db.projects[i].no).trim() === k) return db.projects[i];
+  return null;
+}
+function projectByName(name) {
+  var k = nameKey(name);
+  if (!k) return null;
+  for (var i = 0; i < db.projects.length; i++) if (nameKey(db.projects[i].name) === k) return db.projects[i];
+  return null;
+}
+function siteByName(name) {
+  var k = nameKey(name);
+  if (!k) return null;
+  for (var i = 0; i < db.sites.length; i++) if (nameKey(db.sites[i].name) === k) return db.sites[i];
+  return null;
+}
+/* 발주처명과 같은 이름의 현장을 찾고, 없으면 만든다 */
+function ensureSiteForClient(client, base) {
+  var nm = str(client).trim().slice(0, 80);
+  if (!nm) return null;
+  var found = siteByName(nm);
+  if (found) return found;
+  base = base || {};
+  var ns = normSite({
+    name: nm, client: nm,
+    start: isISODate(base.start) ? base.start : '',
+    end: isISODate(base.end) ? base.end : '',
+    status: SITE_STATUS[base.status] ? base.status : 'active',
+    memo: base.memo || ('프로젝트 "' + (base.projectName || nm) + '" 등록 시 자동 생성')
+  });
+  ns.id = uid('site');
+  ns.createdAt = new Date().toISOString();
+  db.sites.push(ns);
+  return ns;
+}
+/* o = { no, client, name, contract, start, end, memo, quiet } */
+function ensureProject(o) {
+  o = o || {};
+  var no = str(o.no).trim().slice(0, 40);
+  var client = str(o.client).trim().slice(0, 60);
+  var pname = str(o.name).trim().slice(0, 100);
+  if (!no && !client && !pname) return null;
+  var p = (no ? projectByNo(no) : null) || (pname ? projectByName(pname) : null);
+  if (p) {
+    /* 이미 있는 프로젝트는 빈 칸만 보충한다(중복 생성 금지) */
+    var changed = false;
+    if (no && !str(p.no).trim()) { p.no = no; changed = true; }
+    if (client && !str(p.client).trim()) { p.client = client; changed = true; }
+    var placeholder = nameKey(p.name) === nameKey(p.client);
+    if (pname && (!str(p.name).trim() || (placeholder && nameKey(pname) !== nameKey(p.name)))) { p.name = pname; changed = true; }
+    if (isISODate(o.contract) && !str(p.contract).trim()) { p.contract = o.contract; changed = true; }
+    var site0 = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.name });
+    if (site0 && !str(p.siteId)) { p.siteId = site0.id; changed = true; }
+    if (changed) saveDB();
+    return p;
+  }
+  if (!pname && !(no && client)) return null;
+  var np = normProject({
+    no: no, name: pname || client, client: client, siteId: '', contract: o.contract,
+    start: o.start, end: o.end, memo: o.memo, status: 'active'
+  });
+  np.id = uid('prj');
+  np.createdAt = new Date().toISOString();
+  var site = ensureSiteForClient(client, { start: np.start, end: np.end, status: np.status, projectName: np.name });
+  if (site) np.siteId = site.id;
+  db.projects.push(np);
+  saveDB();
+  if (!o.quiet) toast('새 프로젝트(' + (np.name || np.no) + ')를 프로젝트 관리에 등록했습니다.');
+  return np;
+}
+/* 프로젝트 선택 드롭다운 옆에 두는 '새 프로젝트 직접 입력' 칸 */
+function newProjectField() {
+  return '<div class="f full"><label>새 프로젝트 직접 입력</label>'
+    + '<input name="newProject" maxlength="100" placeholder="여기에 새 프로젝트명을 적으면 프로젝트 관리에 함께 등록됩니다" autocomplete="off">'
+    + '<span class="hint">위에서 고른 프로젝트 대신 이 이름으로 등록됩니다. (발주처 현장도 함께 만들어집니다)</span></div>';
+}
+/* 폼에서 새 프로젝트명을 읽어 프로젝트 id를 돌려준다 (입력이 없으면 원래 값) */
+function resolveProjectPick(form, currentId, clientName) {
+  var typed = form && form.elements && form.elements.newProject ? str(form.elements.newProject.value).trim() : '';
+  var pid = str(currentId).trim();
+  if (!typed) return pid;
+  var p = ensureProject({ name: typed, client: clientName || '', quiet: false });
+  return p ? p.id : pid;
+}
+
 function openProjectModal(id) {
   var p = id ? byId(db.projects, id) : null;
   if (id && !p) return;
-  var d = p || { name: '', client: '', siteId: '', start: '', end: '', status: 'active', memo: '' };
+  var d = p || { name: '', client: '', siteId: '', contract: '', start: '', end: '', status: 'active', memo: '' };
   var body = '<form id="projectForm" class="modal-body" data-id="' + (p ? p.id : '') + '" novalidate><div class="form-grid">'
     + '<div class="f full"><label>프로젝트명 <span class="req">*</span></label>'
     + '<input name="name" maxlength="80" value="' + esc(d.name) + '" placeholder="예) A현장 골조공사"></div>'
     + '<div class="f"><label>발주처</label><input name="client" maxlength="60" value="' + esc(d.client) + '" placeholder="예) ○○건설"></div>'
     + '<div class="f"><label>현장</label><select name="siteId">' + siteOptions(d.siteId) + '</select></div>'
-    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력해 등록하면 발주처 이름의 현장이 현장관리에 자동으로 1개 만들어집니다. (현장을 직접 고른 경우 기존 선택 유지)</div></div>'
+    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력해 등록하면 발주처 이름의 현장이 현장관리에 자동으로 만들어지고(같은 이름이 있으면 그 현장에 연결), 모든 메뉴에서 만든 프로젝트에도 동일하게 적용됩니다.</div></div>'
     + '<div class="f"><label>시작일</label><input type="date" name="start" value="' + esc(d.start) + '"></div>'
     + '<div class="f"><label>종료일</label><input type="date" name="end" value="' + esc(d.end) + '"></div>'
+    + '<div class="f"><label>계약일</label><input type="date" name="contract" value="' + esc(d.contract) + '"></div>'
     + '<div class="f"><label>상태</label><select name="status">'
     + options([['active', '진행중'], ['planned', '예정'], ['done', '완료'], ['hold', '보류']], d.status) + '</select></div>'
     + '<div class="f full"><label>메모</label><textarea name="memo" maxlength="500" placeholder="프로젝트 관련 메모">' + esc(d.memo) + '</textarea></div>'
@@ -2898,6 +3084,7 @@ function saveProjectForm(form) {
   if (!name) return fieldError(form, 'name', '프로젝트명을 입력해 주세요.');
   var payload = {
     name: name, client: fv(form, 'client'), siteId: fv(form, 'siteId'),
+    contract: isISODate(fv(form, 'contract')) ? fv(form, 'contract') : '',
     start: isISODate(fv(form, 'start')) ? fv(form, 'start') : '',
     end: isISODate(fv(form, 'end')) ? fv(form, 'end') : '',
     status: SITE_STATUS[fv(form, 'status')] ? fv(form, 'status') : 'active',
@@ -2910,29 +3097,25 @@ function saveProjectForm(form) {
     var p = byId(db.projects, id);
     if (!p) { closeModal(); render(); return; }
     Object.keys(payload).forEach(function (k) { p[k] = payload[k]; });
+    if (!str(p.siteId) && p.client) {
+      var ps = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.name });
+      if (ps) p.siteId = ps.id;
+    }
     toast('프로젝트를 수정했습니다.');
   } else {
     var np = normProject(payload);
     np.id = uid('prj');
     np.createdAt = new Date().toISOString();
-    var autoSite = null;
-    if (payload.client) {
-      autoSite = normSite({
-        name: payload.client,
-        client: payload.client,
-        start: payload.start,
-        end: payload.end,
-        status: payload.status,
-        memo: '프로젝트 "' + name + '" 등록 시 자동 생성'
-      });
-      autoSite.id = uid('site');
-      autoSite.createdAt = new Date().toISOString();
-      db.sites.push(autoSite);
-      if (!np.siteId) np.siteId = autoSite.id;
-    }
+    var existedSite = payload.client ? siteByName(payload.client) : null;
+    var autoSite = payload.client
+      ? ensureSiteForClient(payload.client, { start: payload.start, end: payload.end, status: payload.status, projectName: name })
+      : null;
+    if (autoSite && !np.siteId) np.siteId = autoSite.id;
     db.projects.push(np);
     toast(autoSite
-      ? '프로젝트를 등록하고 발주처 "' + payload.client + '" 현장을 자동으로 만들었습니다.'
+      ? (existedSite
+        ? '프로젝트를 등록하고 발주처 "' + payload.client + '" 현장에 연결했습니다.'
+        : '프로젝트를 등록하고 발주처 "' + payload.client + '" 현장을 자동으로 만들었습니다.')
       : '프로젝트를 등록했습니다.');
   }
   saveDB();
@@ -2950,6 +3133,8 @@ function openSiteModal(id) {
     + '<input name="name" maxlength="80" value="' + esc(d.name) + '" placeholder="예) A현장 신축공사"></div>'
     + '<div class="f"><label>발주처</label><input name="client" maxlength="60" value="' + esc(d.client) + '" placeholder="예) ○○건설"></div>'
     + '<div class="f"><label>담당자</label><input name="manager" maxlength="40" value="' + esc(d.manager) + '" placeholder="예) 김현장 소장"></div>'
+    + '<div class="f full"><label>이 현장의 프로젝트</label>'
+    + '<input name="newProject" maxlength="100" placeholder="새 프로젝트명을 적으면 프로젝트 관리에 등록되고 이 현장과 연결됩니다" autocomplete="off"></div>'
     + '<div class="f full"><label>주소</label><input name="address" maxlength="160" value="' + esc(d.address) + '" placeholder="예) 대구광역시 ○○구 ○○로 12"></div>'
     + '<div class="f"><label>착공일</label><input type="date" name="start" value="' + esc(d.start) + '"></div>'
     + '<div class="f"><label>준공일</label><input type="date" name="end" value="' + esc(d.end) + '"></div>'
@@ -2977,17 +3162,28 @@ function saveSiteForm(form) {
     var s = byId(db.sites, id);
     if (!s) { closeModal(); render(); return; }
     Object.keys(payload).forEach(function (k) { s[k] = payload[k]; });
+    linkProjectToSite(s, fv(form, 'newProject'));
     toast('현장 정보를 수정했습니다.');
   } else {
     var ns = normSite(payload);
     ns.id = uid('site');
     ns.createdAt = new Date().toISOString();
     db.sites.push(ns);
+    linkProjectToSite(ns, fv(form, 'newProject'));
     toast('현장을 등록했습니다.');
   }
   saveDB();
   closeModal();
   render();
+}
+/* 현장 화면에서 입력한 새 프로젝트명을 프로젝트 관리에 등록하고 이 현장에 연결한다 */
+function linkProjectToSite(site, projectName) {
+  var nm = str(projectName).trim();
+  if (!site || !nm) return null;
+  var p = ensureProject({ name: nm, client: str(site.client).trim() || str(site.name).trim(), quiet: true });
+  if (p && !str(p.siteId)) p.siteId = site.id;
+  if (p && p.siteId === site.id) return p;
+  return p;
 }
 
 /* ------------------------- doc form ------------------------- */
@@ -2995,7 +3191,7 @@ function openDocModal(id, preset) {
   var d0 = id ? byId(db.docs, id) : null;
   if (id && !d0) return;
   preset = preset || {};
-  var d = d0 || { name: '', siteId: preset.siteId || '', category: '지급요청서', status: 'writing', due: '', memo: '' };
+  var d = d0 || { name: '', siteId: preset.siteId || '', category: '지급요청서', status: 'writing', projectId: preset.projectId || '', due: '', memo: '' };
   var body = '<form id="docForm" class="modal-body" data-id="' + (d0 ? d0.id : '') + '" novalidate><div class="form-grid">'
     + '<div class="f full"><label>문서명 <span class="req">*</span></label>'
     + '<input name="name" maxlength="100" value="' + esc(d.name) + '" placeholder="예) 11월 지급요청서"></div>'
@@ -3004,6 +3200,8 @@ function openDocModal(id, preset) {
     + '<div class="f"><label>제출상태</label><select name="status">'
     + options([['writing', '작성중'], ['submitted', '제출완료'], ['fix', '보완필요']], d.status) + '</select></div>'
     + '<div class="f"><label>마감일</label><input type="date" name="due" value="' + esc(d.due) + '"></div>'
+    + '<div class="f"><label>프로젝트</label><select name="projectId">' + projectOptions(d.projectId) + '</select></div>'
+    + newProjectField()
     + '<div class="f full"><label>메모</label><textarea name="memo" maxlength="500" placeholder="제출처·보완 요청 등">' + esc(d.memo) + '</textarea></div>'
     + '</div></form>';
   openModal({ title: d0 ? '문서 수정' : '문서 등록', body: body, foot: formFoot(d0 ? '저장' : '등록', 'docForm') });
@@ -3015,6 +3213,7 @@ function saveDocForm(form) {
   var payload = {
     name: name, siteId: fv(form, 'siteId'), category: fv(form, 'category'),
     status: DOC_STATUS[fv(form, 'status')] ? fv(form, 'status') : 'writing',
+    projectId: resolveProjectPick(form, fv(form, 'projectId'), siteName(fv(form, 'siteId'))),
     due: isISODate(fv(form, 'due')) ? fv(form, 'due') : '', memo: fv(form, 'memo')
   };
   if (id) {
@@ -3038,12 +3237,14 @@ function saveDocForm(form) {
 function openEventModal(id, presetDate) {
   var e = id ? byId(db.events, id) : null;
   if (id && !e) return;
-  var d = e || { title: '', date: presetDate || todayISO(), type: 'company', memo: '' };
+  var d = e || { title: '', date: presetDate || todayISO(), type: 'company', projectId: '', memo: '' };
   var body = '<form id="eventForm" class="modal-body" data-id="' + (e ? e.id : '') + '" novalidate><div class="form-grid">'
     + '<div class="f full"><label>일정명 <span class="req">*</span></label>'
     + '<input name="title" maxlength="100" value="' + esc(d.title) + '" placeholder="예) 발주처 미팅"></div>'
     + '<div class="f"><label>날짜 <span class="req">*</span></label><input type="date" name="date" value="' + esc(d.date) + '"></div>'
     + '<div class="f"><label>구분</label><select name="type">' + options([['company', '회사'], ['personal', '개인']], d.type) + '</select></div>'
+    + '<div class="f"><label>프로젝트</label><select name="projectId">' + projectOptions(d.projectId) + '</select></div>'
+    + newProjectField()
     + '<div class="f full"><label>메모</label><textarea name="memo" maxlength="500" placeholder="장소·준비물 등">' + esc(d.memo) + '</textarea></div>'
     + '<div class="f full"><label class="check-line"><input type="checkbox" name="done" value="1"' + (d.done ? ' checked' : '') + '> 완료한 일정으로 표시</label></div>'
     + '</div></form>';
@@ -3055,7 +3256,7 @@ function saveEventForm(form) {
   if (!title) return fieldError(form, 'title', '일정명을 입력해 주세요.');
   var date = fv(form, 'date');
   if (!isISODate(date)) return fieldError(form, 'date', '날짜를 선택해 주세요.');
-  var payload = { title: title, date: date, type: fv(form, 'type') === 'personal' ? 'personal' : 'company', memo: fv(form, 'memo'), done: !!(form.elements.done && form.elements.done.checked) };
+  var payload = { title: title, date: date, type: fv(form, 'type') === 'personal' ? 'personal' : 'company', projectId: resolveProjectPick(form, fv(form, 'projectId'), ''), memo: fv(form, 'memo'), done: !!(form.elements.done && form.elements.done.checked) };
   if (id) {
     var e = byId(db.events, id);
     if (!e) { closeModal(); render(); return; }
@@ -3093,6 +3294,7 @@ function openProjectDetail(id) {
     + '<div class="progress-row" style="margin-bottom:16px"><div class="progress"><span style="width:' + st.rate + '%"></span></div><b>' + st.rate + '%</b></div>'
     + '<div class="meta-list">'
     + '<div><span>발주처</span><b>' + esc(p.client || '-') + '</b></div>'
+    + '<div><span>계약일</span><b>' + (p.contract ? fmtDot(p.contract) : '-') + '</b></div>'
     + '<div><span>현장</span><b>' + (p.siteId ? esc(siteName(p.siteId)) : '-') + '</b></div>'
     + '<div><span>기간</span><b>' + (p.start || p.end ? (p.start ? fmtShort(p.start) : '미정') + ' ~ ' + (p.end ? fmtShort(p.end) : '미정') : '-') + '</b></div>'
     + (p.memo ? '<div><span>메모</span><b>' + esc(p.memo) + '</b></div>' : '')
@@ -3605,11 +3807,20 @@ function laborCompanyCard(m, t) {
     + body + '</div>';
 }
 function laborWorkerCard(m) {
-  var rows = labor.workers.map(function (w, i) {
+  var q = str(ui.laborWorkerQ).trim().toLowerCase();
+  var list = labor.workers.map(function (w, i) { return { w: w, no: i + 1 }; });
+  if (q) {
+    list = list.filter(function (x) {
+      var hay = [x.w.name, x.w.rrn, x.w.phone, x.w.addr, x.w.bank, x.w.account, x.w.holder].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+  var rows = list.map(function (x) {
+    var w = x.w;
     var inMonth = !!laborMonthRow(w.id);
     return '<tr' + (laborSelHas('workers', w.id) ? ' class="is-selected"' : '') + ' data-row-id="' + w.id + '">'
       + '<td class="sel-cell" style="width:38px">' + laborCheck('workers', w.id, w.name) + '</td>'
-      + '<td class="num">' + (i + 1) + '</td>'
+      + '<td class="num">' + x.no + '</td>'
       + '<td class="nm">' + esc(w.name) + (inMonth ? ' <span class="paid-badge">출근부</span>' : '') + '</td>'
       + '<td class="nowrap">' + (w.rrn ? esc(w.rrn) : '<span class="muted">-</span>') + '</td>'
       + '<td class="nowrap">' + (w.phone ? esc(w.phone) : '<span class="muted">-</span>') + '</td>'
@@ -3623,14 +3834,19 @@ function laborWorkerCard(m) {
       + '<button class="icon-sm danger" data-action="labor-del-worker" data-id="' + w.id + '" aria-label="근로자 삭제">' + icon('trash', 15) + '</button>'
       + '</div></td></tr>';
   }).join('');
-  var body = labor.workers.length
-    ? '<div class="table-wrap"><table class="labor-table" style="min-width:1040px"><thead><tr>'
-    + '<th style="width:38px"></th><th>No.</th><th>성명</th><th>주민등록번호</th><th>휴대전화</th><th>주소</th><th>은행</th><th>계좌번호</th><th>예금주</th><th class="num">노임단가</th><th></th>'
-    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
-    : '<div class="labor-empty">등록된 근로자가 없습니다. <b>근로자 추가</b>로 인적사항을 한 번만 저장해 두면 매달 선택해서 쓸 수 있습니다.</div>';
+  var body = !labor.workers.length
+    ? '<div class="labor-empty">등록된 근로자가 없습니다. <b>근로자 추가</b>로 인적사항을 한 번만 저장해 두면 매달 선택해서 쓸 수 있습니다.</div>'
+    : (!list.length
+      ? '<div class="labor-empty">검색 결과가 없습니다. 성명·전화·주소로 다시 찾아보세요.</div>'
+      : '<div class="table-wrap"><table class="labor-table" style="min-width:1040px"><thead><tr>'
+        + '<th style="width:38px"></th><th>No.</th><th>성명</th><th>주민등록번호</th><th>휴대전화</th><th>주소</th><th>은행</th><th>계좌번호</th><th>예금주</th><th class="num">노임단가</th><th></th>'
+        + '</tr></thead><tbody>' + rows + '</tbody></table></div>');
   return '<div class="card labor-sec">'
     + '<div class="labor-sec-head"><h3>' + icon('users', 17) + ' 근로자 인적사항 DB</h3>'
-    + '<span class="sub">전체 ' + labor.workers.length + '명 · 이번 달 ' + m.rows.length + '명</span>'
+    + '<span class="sub">전체 ' + labor.workers.length + '명' + (q ? ' · 검색 ' + list.length + '명' : '') + ' · 이번 달 ' + m.rows.length + '명</span>'
+    + '<input class="labor-db-search" type="search" id="laborWorkerSearch" value="' + esc(ui.laborWorkerQ || '') + '" placeholder="성명·전화·주소 검색" aria-label="근로자 인적사항 검색" autocomplete="off">'
+    + '<button class="btn btn-ghost btn-sm" data-action="labor-import-workers">' + icon('upload', 14) + ' 엑셀 불러오기</button>'
+    + '<input type="file" id="laborWorkerImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>'
     + '<button class="btn btn-primary btn-sm" data-action="labor-new-worker">' + icon('plus', 14) + ' 근로자 추가</button></div>'
     + '<div class="bulk-wrap">' + laborBulkBar('workers', labor.workers.length, [
       { action: 'labor-add-selected', label: '이번 달 출근부에 추가', cls: 'btn-bulk-done', icon: 'plus' },
@@ -4398,14 +4614,23 @@ function saveLaborCompanyForm(form) {
     var c = byId(m.companies, id);
     if (!c) { closeModal(); render(); return; }
     Object.keys(payload).forEach(function (k) { c[k] = payload[k]; });
+    syncCompanyProject(c);
     toast('공사를 수정했습니다.');
   } else {
     var nc = normLaborCompany(payload);
     nc.id = uid('cmp');
     m.companies.push(nc);
+    syncCompanyProject(nc);
     toast('공사를 추가했습니다.');
   }
   saveLabor(); closeModal(); render();
+}
+/* 노무비 대장의 공사 정보를 프로젝트 관리와 맞춘다(없으면 등록) */
+function syncCompanyProject(c) {
+  if (!c) return null;
+  var p = ensureProject({ no: c.no, client: c.client, name: c.name, quiet: true });
+  if (p && !str(c.projectId)) c.projectId = p.id;
+  return p;
 }
 function deleteLaborCompany(id) {
   var m = laborMonth();
@@ -4520,6 +4745,276 @@ function laborAddSelectedWorkers() {
   });
   saveLabor(); laborClearAll(); render();
   toast(added ? added + '명을 이번 달 출근부에 추가했습니다.' : '이미 모두 출근부에 있습니다.');
+}
+
+/* ---------------- 근로자 인적사항 DB — 엑셀 일괄 불러오기 ---------------- */
+/* 작업자 인적사항 기입(내보내기 시트 하단 포함) · 인적사항 DB 파일 모두에서
+   '성 명' · '주민등록번호' 헤더 행을 찾아 그 아래 행을 읽는다. */
+var LABOR_DB_HEADERS = [
+  { key: 'name', labels: ['성명', '이름'], col: 'B' },
+  { key: 'rrn', labels: ['주민등록번호', '주민번호'], col: 'C' },
+  { key: 'phone', labels: ['휴대전화번호', '휴대폰번호', '휴대전화', '휴대폰', '전화번호', '연락처'], col: 'G' },
+  { key: 'addr', labels: ['주소'], col: 'K' },
+  { key: 'bank', labels: ['은행명', '은행'], col: 'T' },
+  { key: 'account', labels: ['계좌번호', '계좌'], col: 'X' },
+  { key: 'holder', labels: ['예금주'], col: 'AB' },
+  { key: 'rate', labels: ['노임단가', '단가'], col: 'AE' }
+];
+function laborHeaderKey(text) {
+  var t = str(text).replace(/\s+/g, '');
+  if (!t) return '';
+  for (var i = 0; i < LABOR_DB_HEADERS.length; i++) {
+    for (var j = 0; j < LABOR_DB_HEADERS[i].labels.length; j++) {
+      if (t === LABOR_DB_HEADERS[i].labels[j]) return LABOR_DB_HEADERS[i].key;
+    }
+  }
+  return '';
+}
+function laborCellText(v) { return str(v).replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim(); }
+function laborCleanName(v) { return laborCellText(v); }
+function laborNormRrn(v) {
+  var s = laborCellText(v);
+  if (!s) return '';
+  var d = s.replace(/[^0-9]/g, '');
+  if (d.length === 13 || d.length === 14) return d.slice(0, 6) + '-' + d.slice(6);
+  return s;
+}
+/* 엑셀에 숫자로 저장되어 앞 0이 빠진 휴대전화번호(1049475649)를 010-4947-5649로 되살린다 */
+function laborNormPhone(v) {
+  var s = laborCellText(v);
+  if (!s) return '';
+  var d = s.replace(/[^0-9]/g, '');
+  if (!d) return s;
+  if (d.length > 10 && d.indexOf('82') === 0) d = '0' + d.slice(2);
+  if (d.length === 10 && d.indexOf('10') === 0) d = '0' + d;
+  if (d.length === 11 && d.indexOf('01') === 0) return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  if (d.length === 10 && d.indexOf('02') === 0) return d.slice(0, 2) + '-' + d.slice(2, 6) + '-' + d.slice(6);
+  if (d.length === 10 && d.charAt(0) === '0') return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
+  if (d.length === 9 && d.indexOf('02') === 0) return d.slice(0, 2) + '-' + d.slice(2, 5) + '-' + d.slice(5);
+  if (d.length === 8) return d.slice(0, 4) + '-' + d.slice(4);
+  /* 0으로 시작하지 않는 숫자는 형식을 알 수 없으니 원본 숫자를 그대로 남겨 둔다 */
+  return d;
+}
+function laborCleanAccount(v) {
+  var s = laborCellText(v);
+  if (/^[0-9.]+e\+?[0-9]+$/i.test(s)) {
+    var n = Number(s);
+    if (isFinite(n)) s = n.toFixed(0);
+  }
+  return s;
+}
+function laborNumOf(v) {
+  var s = laborCellText(v).replace(/[^0-9.-]/g, '');
+  var n = Number(s);
+  return isFinite(n) ? Math.round(n) : 0;
+}
+function laborSheetPaths(zip) {
+  var wb = zip.file('xl/workbook.xml');
+  var relFile = zip.file('xl/_rels/workbook.xml.rels');
+  if (!wb || !relFile) return Promise.resolve([]);
+  return Promise.all([wb.async('string'), relFile.async('string')]).then(function (parts) {
+    var doc = vxParseXml(parts[0], '통합문서');
+    var rdoc = vxParseXml(parts[1], '연결 정보');
+    var sheets = doc.getElementsByTagName('sheet');
+    var rels = rdoc.getElementsByTagName('Relationship');
+    var map = {};
+    for (var i = 0; i < rels.length; i++) map[rels[i].getAttribute('Id')] = rels[i].getAttribute('Target') || '';
+    var out = [];
+    for (var s = 0; s < sheets.length; s++) {
+      var rid = sheets[s].getAttribute('r:id') || sheets[s].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      var target = map[rid] || '';
+      if (!target) continue;
+      var path = target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target;
+      if (!zip.file(path)) continue;
+      out.push({ name: sheets[s].getAttribute('name') || '', path: path });
+    }
+    return out;
+  });
+}
+function laborSharedStrings(zip) {
+  var f = zip.file('xl/sharedStrings.xml');
+  if (!f) return Promise.resolve([]);
+  return f.async('string').then(function (xml) {
+    var doc = vxParseXml(xml, '공유 문자열');
+    var sis = doc.getElementsByTagName('si');
+    var out = [];
+    for (var i = 0; i < sis.length; i++) {
+      var ts = sis[i].getElementsByTagName('t');
+      var txt = '';
+      for (var j = 0; j < ts.length; j++) txt += ts[j].textContent;
+      out.push(txt);
+    }
+    return out;
+  });
+}
+function laborSheetGrid(xml, shared) {
+  var doc = vxParseXml(xml, '시트');
+  var rows = doc.getElementsByTagName('row');
+  var grid = [];
+  for (var r = 0; r < rows.length; r++) {
+    var cells = {};
+    var cs = rows[r].getElementsByTagName('c');
+    for (var c = 0; c < cs.length; c++) {
+      var col = vxColOf(cs[c].getAttribute('r'));
+      if (!col) continue;
+      cells[col] = vxCellText(cs[c], shared);
+    }
+    grid.push({ no: Number(rows[r].getAttribute('r')) || (grid.length + 1), cells: cells });
+  }
+  return grid;
+}
+function laborFindHeaderRow(grid) {
+  /* 성명·주민등록번호가 있는 행 중에서 다른 항목(전화·주소·은행·계좌·예금주·단가)을
+     가장 많이 갖춘 행을 진짜 인적사항 헤더로 본다. */
+  var best = null;
+  var bestScore = -1;
+  for (var r = 0; r < grid.length; r++) {
+    var cells = grid[r].cells;
+    var cols = {};
+    for (var col in cells) {
+      if (!Object.prototype.hasOwnProperty.call(cells, col)) continue;
+      var key = laborHeaderKey(cells[col]);
+      if (key && !cols[key]) cols[key] = col;
+    }
+    if (!cols.name || !cols.rrn) continue;
+    var extra = 0;
+    for (var i = 0; i < LABOR_DB_HEADERS.length; i++) {
+      var k = LABOR_DB_HEADERS[i].key;
+      if (k !== 'name' && k !== 'rrn' && cols[k]) extra++;
+    }
+    if (extra > bestScore) { bestScore = extra; best = { index: r, cols: cols }; }
+  }
+  return best;
+}
+/* 인적사항 한 줄로 볼 수 있는지: 성명 형태 + 다른 정보가 하나라도 있어야 한다 */
+function laborWorkerRowOk(it) {
+  if (!it || !it.name) return false;
+  if (!/^[가-힣A-Za-z]/.test(it.name) || it.name.length < 2) return false;
+  if (laborHeaderKey(it.name)) return false;
+  if (/^(합계|총계|계|비고|비\s*고|No\.?)$/i.test(it.name)) return false;
+  if (it.rrn.replace(/\D/g, '').length >= 13) return true;
+  if (it.phone.replace(/\D/g, '').length >= 9) return true;
+  if (it.account) return true;
+  if (it.bank) return true;
+  if (Number(it.rate) > 0) return true;
+  if (it.addr.length >= 4) return true;
+  return false;
+}
+function laborParseWorkerRows(grid, head) {
+  var cols = head.cols;
+  var out = [];
+  function cellOf(cells, key) { var c = cols[key]; return c ? cells[c] : ''; }
+  for (var r = head.index + 1; r < grid.length; r++) {
+    var cells = grid[r].cells;
+    var name = laborCleanName(cellOf(cells, 'name'));
+    if (!name) continue;
+    var it = {
+      name: name,
+      rrn: laborNormRrn(cellOf(cells, 'rrn')),
+      phone: laborNormPhone(cellOf(cells, 'phone')),
+      addr: laborCellText(cellOf(cells, 'addr')),
+      bank: laborCellText(cellOf(cells, 'bank')),
+      account: laborCleanAccount(cellOf(cells, 'account')),
+      holder: laborCellText(cellOf(cells, 'holder')),
+      rate: laborNumOf(cellOf(cells, 'rate'))
+    };
+    if (!laborWorkerRowOk(it)) continue;
+    out.push(it);
+  }
+  return out;
+}
+function laborWorkerParseXlsx(buf) {
+  return window.JSZip.loadAsync(buf).then(function (zip) {
+    return Promise.all([laborSheetPaths(zip), laborSharedStrings(zip)]).then(function (parts) {
+      var sheets = parts[0];
+      var shared = parts[1];
+      if (!sheets.length) throw new Error('엑셀에서 시트를 찾지 못했습니다.');
+      var chain = Promise.resolve([]);
+      sheets.forEach(function (sh) {
+        chain = chain.then(function (found) {
+          return zip.file(sh.path).async('string').then(function (xml) {
+            var grid = laborSheetGrid(xml, shared);
+            var head = laborFindHeaderRow(grid);
+            if (!head) return found;
+            var items = laborParseWorkerRows(grid, head);
+            if (!items.length) return found;
+            var titled = false;
+            for (var g = 0; g < grid.length && !titled; g++) {
+              for (var c in grid[g].cells) {
+                if (Object.prototype.hasOwnProperty.call(grid[g].cells, c) && str(grid[g].cells[c]).indexOf('인적사항') >= 0) { titled = true; break; }
+              }
+            }
+            found.push({ sheet: sh.name, items: items, titled: titled });
+            return found;
+          });
+        });
+      });
+      return chain.then(function (list) {
+        if (!list.length) return null;
+        /* '작업자 인적사항 기입' 표시가 있는 시트를 우선, 그다음 가장 많은 인원을 읽은 시트 */
+        var best = null;
+        list.forEach(function (c) {
+          if (!best) { best = c; return; }
+          var cs = (c.titled ? 2 : 0) + c.items.length / 1000;
+          var bs = (best.titled ? 2 : 0) + best.items.length / 1000;
+          if (cs > bs) best = c;
+        });
+        return best;
+      });
+    });
+  });
+}
+function laborWorkerKey(w) {
+  var rrn = str(w && w.rrn).replace(/[^0-9]/g, '');
+  var name = laborCleanName(w && w.name);
+  return rrn ? name + '|' + rrn : name + '|';
+}
+/* 기존 DB를 지우지 않고 병합: 같은 성명+주민등록번호는 빈 칸만 채우고, 없으면 새로 추가 */
+function laborWorkerMergeItems(items) {
+  var res = { added: 0, updated: 0, skipped: 0 };
+  var index = {};
+  labor.workers.forEach(function (w) { index[laborWorkerKey(w)] = w; });
+  items.forEach(function (it) {
+    var key = laborWorkerKey(it);
+    var w = index[key];
+    if (w) {
+      var changed = false;
+      ['rrn', 'phone', 'addr', 'bank', 'account', 'holder'].forEach(function (f) {
+        if (!str(w[f]).trim() && str(it[f]).trim()) { w[f] = str(it[f]).slice(0, 200); changed = true; }
+      });
+      if (!Number(w.rate) && Number(it.rate)) { w.rate = Number(it.rate); changed = true; }
+      if (changed) res.updated++; else res.skipped++;
+      return;
+    }
+    var nw = normLaborWorker(it);
+    nw.id = uid('wrk');
+    labor.workers.push(nw);
+    index[key] = nw;
+    res.added++;
+  });
+  return res;
+}
+function laborWorkerPickFile() {
+  var fi = document.getElementById('laborWorkerImportFile');
+  if (fi) fi.click();
+}
+function laborWorkerImportFile(file) {
+  if (!file) return;
+  if (!window.JSZip) { toast('엑셀 기능을 불러오지 못했습니다. 페이지를 새로고침해 주세요.', 'alert'); return; }
+  toast('엑셀에서 근로자 인적사항을 읽는 중입니다...');
+  vxReadFile(file).then(laborWorkerParseXlsx).then(function (found) {
+    if (!found || !found.items.length) {
+      toast('시트에서 근로자 인적사항을 찾지 못했습니다. 성명·주민등록번호 헤더가 있는 시트인지 확인해 주세요.', 'alert');
+      return;
+    }
+    var r = laborWorkerMergeItems(found.items);
+    saveLabor();
+    render();
+    toast('엑셀 ' + found.items.length + '행 불러오기 완료 (신규 ' + r.added + '명 · 업데이트 ' + r.updated + '명'
+      + (r.skipped ? ' · 중복/변경없음 ' + r.skipped + '행' : '') + ')');
+  }).catch(function (err) {
+    toast('엑셀을 읽지 못했습니다: ' + (err && err.message ? err.message : err), 'alert');
+  });
 }
 function openLaborDay(workerId, day) {
   var m = laborMonth();
@@ -6714,28 +7209,13 @@ function travelSyncProject(o) {
       if (!name) name = str(c.name).trim().slice(0, 100);
     }
   }
-  var p = (code ? trvProjectByNo(code) : null) || (name ? trvProjectByName(name) : null);
+  var p = (code ? projectByNo(code) : null) || (name ? projectByName(name) : null);
   if (p) {
-    /* 이미 있는 프로젝트는 빈 칸만 보충한다(중복 생성 금지) */
-    var changed = false;
-    if (code && !str(p.no).trim() && !trvProjectByNo(code)) { p.no = code; changed = true; }
-    if (client && !str(p.client).trim()) { p.client = client; changed = true; }
-    var placeholder = trvKeyOf(p.name) === trvKeyOf(p.client);
-    if (name && (!str(p.name).trim() || (placeholder && trvKeyOf(name) !== trvKeyOf(p.name)))) {
-      p.name = name; changed = true;
-    }
-    if (changed) saveDB();
-    return p;
+    return ensureProject({ no: code, client: client, name: name });
   }
   /* 새 프로젝트는 공사내용이 있거나 (공사코드 + 업체명)일 때만 만든다 */
   if (!name && !(code && client)) return null;
-  var np = normProject({ no: code, name: name || client, client: client, siteId: '', start: '', end: '', status: 'active', memo: '' });
-  np.id = uid('prj');
-  np.createdAt = new Date().toISOString();
-  db.projects.push(np);
-  saveDB();
-  toast('새 프로젝트(' + (np.name || np.no) + ')가 프로젝트 관리에도 저장되었습니다.');
-  return np;
+  return ensureProject({ no: code, client: client, name: name });
 }
 function travelSyncPurposeProject(i) {
   var rep = travelCur();
@@ -8144,14 +8624,21 @@ function saveVendorForm(form) {
     var it = vendorById(id);
     if (!it) { closeModal(); render(); return; }
     Object.keys(payload).forEach(function (k) { it[k] = payload[k]; });
+    syncVendorProject(it);
     toast('업체 결제 내역을 수정했습니다.');
   } else {
     var nx = normVendorItem(payload);
     nx.id = uid('vp');
     vendor.items.push(nx);
+    syncVendorProject(nx);
     toast('업체 결제 내역을 추가했습니다.');
   }
   saveVendor(); closeModal(); render();
+}
+/* 업체 결제 내역의 공사코드·공사명을 프로젝트 관리와 맞춘다(없으면 등록) */
+function syncVendorProject(it) {
+  if (!it) return null;
+  return ensureProject({ no: it.code, name: it.name, quiet: true });
 }
 function vendorDuplicate(id) {
   var it = vendorById(id);
@@ -8683,6 +9170,7 @@ function exportJSON() {
     schema: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     user: db.user,
+    settings: db.settings,
     tasks: db.tasks, projects: db.projects, sites: db.sites, docs: db.docs, events: db.events,
     labor: labor,
     travel: travel,
@@ -8836,9 +9324,11 @@ document.addEventListener('click', function (e) {
       if (!tf || !tf.elements || !tf.elements.dueTime) break;
       if (action === 'set-due-time') {
         tf.elements.dueTime.value = el.getAttribute('data-time') || '';
+        if (tf.removeAttribute) tf.removeAttribute('data-notime');
         if (tf.elements.due && !isISODate(tf.elements.due.value)) tf.elements.due.value = todayISO();
       } else {
         tf.elements.dueTime.value = '';
+        if (tf.setAttribute) tf.setAttribute('data-notime', '1');
       }
       break;
     }
@@ -8915,6 +9405,7 @@ document.addEventListener('click', function (e) {
     case 'labor-import-sites': openImportCompanies(); break;
     case 'labor-add-company': addCompanyFromSource(el.getAttribute('data-kind'), id); break;
     case 'labor-new-worker': openWorkerModal(); break;
+    case 'labor-import-workers': laborWorkerPickFile(); break;
     case 'labor-edit-worker': openWorkerModal(id); break;
     case 'labor-del-worker': deleteLaborWorker(id); break;
     case 'labor-add-selected': laborAddSelectedWorkers(); break;
@@ -8976,6 +9467,7 @@ document.addEventListener('click', function (e) {
       if (fi) fi.click();
       break;
     }
+    case 'show-all-menus': showAllMenus(); break;
     case 'reset-data': resetAll(); break;
     case 'csv-tasks': exportTasksCSV(); break;
     case 'csv-sites': exportSitesCSV(); break;
@@ -8994,6 +9486,11 @@ document.addEventListener('change', function (e) {
   }
   if (el.id === 'vendorImportFile') {
     if (el.files && el.files[0]) vendorImportFile(el.files[0]);
+    el.value = '';
+    return;
+  }
+  if (el.id === 'laborWorkerImportFile') {
+    if (el.files && el.files[0]) laborWorkerImportFile(el.files[0]);
     el.value = '';
     return;
   }
@@ -9046,6 +9543,7 @@ document.addEventListener('change', function (e) {
   if (action === 'travel-find-date') { setTravelFindDate(el.getAttribute('data-role'), el.value); return; }
   if (action === 'travel-find-project') { setTravelFindProject(el.value); return; }
   if (action === 'toggle-task') { toggleTask(el.getAttribute('data-id'), el.checked); return; }
+  if (action === 'toggle-menu-vis') { setMenuVisible(el.getAttribute('data-view'), el.checked); return; }
   if (action === 'set-task-status') { setTaskStatus(el.getAttribute('data-id'), el.value); return; }
   if (action === 'set-doc-status') { setDocStatus(el.getAttribute('data-id'), el.value); return; }
   var filter = el.getAttribute ? el.getAttribute('data-filter') : null;
@@ -9096,6 +9594,12 @@ document.addEventListener('input', function (e) {
     ui.doc.q = el.value;
     clearTimeout(ui.searchTimer);
     ui.searchTimer = setTimeout(function () { rerenderKeepingFocus('docSearch', el.value.length); }, 220);
+    return;
+  }
+  if (el.id === 'laborWorkerSearch') {
+    ui.laborWorkerQ = el.value;
+    clearTimeout(ui.searchTimer);
+    ui.searchTimer = setTimeout(function () { rerenderKeepingFocus('laborWorkerSearch', el.value.length); }, 220);
     return;
   }
   if (el.id === 'userName' || el.id === 'userInitials') {
