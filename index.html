@@ -815,6 +815,21 @@ ul{margin:0;padding:0;list-style:none}
   .vx-proj b{min-width:120px;font-size:13px}
   .vx-rate-cell{min-width:110px;padding-right:14px}
 }
+/* 휴대폰: 계약금액·기지급액은 접고 잔액·지급율을 바로 보이게 */
+@media (max-width:560px){
+  .vx-table-clean{min-width:0}
+  .vx-table-clean thead th:nth-child(4), .vx-table-clean thead th:nth-child(5),
+  .vx-table-clean tbody td:nth-child(4), .vx-table-clean tbody td:nth-child(5){display:none}
+  .vx-table-clean thead th:last-child, .vx-table-clean tbody td:last-child, .vx-table-clean tfoot td:last-child{display:none}
+  .vx-table-clean tfoot td:nth-child(2), .vx-table-clean tfoot td:nth-child(3){display:none}
+  .vx-table-clean th,.vx-table-clean td{padding:12px 8px;font-size:12.5px}
+  .vx-proj b{min-width:80px;font-size:12.5px}
+  .vx-proj span{font-size:10.5px}
+  .vx-vendor{white-space:normal;font-size:12.5px}
+  .vx-money{font-size:12.5px}
+  .vx-rate-cell{min-width:78px;padding-right:6px}
+  .vx-progress{min-width:56px}
+}
 .vx-table .num.vx-due{color:#DC2626;font-weight:800}
 .vx-table tfoot td{background:#F8FAFC;font-weight:800;border-top:1px solid #E2E8F0;white-space:nowrap;font-size:12px}
 .vx-sort-th{white-space:nowrap}
