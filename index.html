@@ -1352,7 +1352,7 @@ function normalizeDB(raw) {
     d.user.initials = str(raw.user.initials).slice(0, 3) || d.user.name.slice(0, 2);
   }
   d.tasks = arr(raw.tasks).map(normTask).filter(function (t) { return t.title; });
-  d.projects = arr(raw.projects).map(normProject).filter(function (p) { return p.name; });
+  d.projects = arr(raw.projects).map(normProject).filter(function (p) { return p.name || p.client || p.no; });
   d.sites = arr(raw.sites).map(normSite).filter(function (s) { return s.name; });
   d.docs = arr(raw.docs).map(normDoc).filter(function (x) { return x.name; });
   d.events = arr(raw.events).map(normEvent).filter(function (e) { return e.title; });
@@ -1542,7 +1542,7 @@ function bulkNames(section, ids) {
     else if (section === 'sites') x = byId(db.sites, id);
     else if (section === 'docs') x = byId(db.docs, id);
     else x = byId(db.events, id);
-    if (x) out.push(x.title || x.name);
+    if (x) out.push(x.title || x.name || x.client);
   });
   return out.slice(0, 5).map(function (n) {
     n = str(n);
@@ -1707,7 +1707,7 @@ function siteName(id) {
 }
 function projectName(id) {
   var p = id ? byId(db.projects, id) : null;
-  return p ? p.name : '';
+  return p ? projectTitle(p) : '';
 }
 function projectStats(projectId) {
   var ts = db.tasks.filter(function (t) { return t.projectId === projectId; });
@@ -1870,7 +1870,7 @@ function siteOptions(current, placeholder) {
 function projectOptions(current) {
   var out = '<option value="">프로젝트 선택 안 함</option>';
   db.projects.forEach(function (p) {
-    out += '<option value="' + p.id + '"' + (p.id === current ? ' selected' : '') + '>' + esc(p.name) + '</option>';
+    out += '<option value="' + p.id + '"' + (p.id === current ? ' selected' : '') + '>' + esc(projectPickLabel(p)) + '</option>';
   });
   return out;
 }
@@ -2266,6 +2266,27 @@ function taskTableRow(t) {
 /* ------------------------- projects ------------------------- */
 var PROJECT_STATUS_FILTERS = [['all', '전체 상태'], ['active', '진행중'], ['planned', '예정'], ['done', '완료'], ['hold', '보류']];
 
+/* 프로젝트를 한 줄로 부르는 이름 — 프로젝트명 → 발주처 → 공사코드 순.
+   업체 결제 현황에서 온 프로젝트는 프로젝트명이 비어 있고 발주처(공사명)만 있다. */
+function projectTitle(p) {
+  if (!p) return '';
+  return str(p.name).trim() || str(p.client).trim() || str(p.no).trim() || '';
+}
+/* 드롭다운·목록에 쓰는 이름 — 프로젝트명이 없으면 '발주처 (공사코드)' */
+function projectPickLabel(p) {
+  if (!p) return '';
+  var nm = str(p.name).trim(), cl = str(p.client).trim(), no = str(p.no).trim();
+  if (nm) return nm;
+  if (cl) return no ? (cl + ' (' + no + ')') : cl;
+  return no || '(이름 없음)';
+}
+/* 표·카드의 프로젝트명 칸 — 비어 있으면 '-' (업체 결제 현황에서 온 항목) */
+function projectNameCell(p) {
+  var nm = str(p.name).trim();
+  var memo = p.memo ? '<span class="muted" title="' + esc(p.memo) + '">' + icon('file', 13) + '</span>' : '';
+  if (!nm) return '<div class="cell-title"><span class="muted">-</span>' + memo + '</div>';
+  return '<div class="cell-title"><span class="txt" title="' + esc(nm) + '">' + esc(nm) + '</span>' + memo + '</div>';
+}
 /* 프로젝트의 계약일 형식 (2026.01.05) — 표·카드 공통 */
 function projectDateText(iso) {
   if (!isISODate(iso)) return '';
@@ -2334,7 +2355,7 @@ function viewProjects() {
   var filtering = !!ui.project.q.trim() || ui.project.status !== 'all';
   var toolbar = '<div class="toolbar">'
     + '<div class="search-box">' + icon('search', 16)
-    + '<input id="projectSearch" type="search" placeholder="공사코드·프로젝트명·발주처·현장 검색" value="' + esc(ui.project.q) + '" aria-label="프로젝트 검색"></div>'
+    + '<input id="projectSearch" type="search" placeholder="공사코드·발주처·프로젝트명·현장 검색" value="' + esc(ui.project.q) + '" aria-label="프로젝트 검색"></div>'
     + '<select data-filter="project.status" aria-label="프로젝트 상태 필터">' + options(PROJECT_STATUS_FILTERS, ui.project.status) + '</select>'
     + (filtering ? '<button class="link" data-action="reset-project-filter">필터 초기화</button>' : '')
     + '<div class="spacer"></div>'
@@ -2351,7 +2372,7 @@ function viewProjects() {
     body = '<div class="table-card"><div class="table-scroll"><table class="table projects"><thead><tr>'
       + '<th class="sel-cell">' + bulkSelectAllBox('projects') + '</th>'
       + projectSortHead()
-      + '<th style="min-width:200px">프로젝트명</th><th>발주처 / 현장</th>'
+      + '<th style="min-width:150px">발주처 / 현장</th><th style="min-width:200px">프로젝트명</th>'
       + '<th>계약일</th><th>착공일</th><th>준공일</th><th>상태</th><th>연결 업무</th><th style="text-align:right">관리</th>'
       + '</tr></thead><tbody>' + list.map(projectRow).join('') + '</tbody></table></div></div>';
   }
@@ -2385,11 +2406,10 @@ function projectRow(p) {
   var st = projectStats(p.id);
   var stt = SITE_STATUS[p.status] || SITE_STATUS.active;
   return '<tr' + (selHas('projects', p.id) ? ' class="is-selected"' : '') + ' data-row-id="' + p.id + '">'
-    + '<td class="sel-cell">' + bulkCheckbox('projects', p.id, p.name) + '</td>'
+    + '<td class="sel-cell">' + bulkCheckbox('projects', p.id, projectPickLabel(p)) + '</td>'
     + '<td class="nowrap">' + (p.no ? esc(p.no) : '<span class="muted">-</span>') + '</td>'
-    + '<td><div class="cell-title"><span class="txt" title="' + esc(p.name) + '">' + esc(p.name) + '</span>'
-    + (p.memo ? '<span class="muted" title="' + esc(p.memo) + '">' + icon('file', 13) + '</span>' : '') + '</div></td>'
     + '<td><div class="cell-pair">' + projectClientSite(p) + '</div></td>'
+    + '<td>' + projectNameCell(p) + '</td>'
     + '<td class="date-cell">' + projectDateCell(p.contract) + '</td>'
     + '<td class="date-cell">' + projectDateCell(p.start) + '</td>'
     + '<td class="date-cell">' + projectDateCell(p.end) + '</td>'
@@ -2397,21 +2417,27 @@ function projectRow(p) {
     + '<td><span class="count-chip' + (st.total ? '' : ' zero') + '">' + st.total + '건</span></td>'
     + '<td><div class="actions">'
     + '<button class="btn btn-ghost btn-xs" data-action="project-detail" data-id="' + p.id + '">' + icon('clipboard', 13) + ' 업무</button>'
-    + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="' + esc(p.name) + ' 수정">' + icon('edit', 15) + '</button>'
-    + '<button class="icon-sm danger" data-action="del-project" data-id="' + p.id + '" aria-label="' + esc(p.name) + ' 삭제">' + icon('trash', 15) + '</button>'
+    + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="' + esc(projectPickLabel(p)) + ' 수정">' + icon('edit', 15) + '</button>'
+    + '<button class="icon-sm danger" data-action="del-project" data-id="' + p.id + '" aria-label="' + esc(projectPickLabel(p)) + ' 삭제">' + icon('trash', 15) + '</button>'
     + '</div></td></tr>';
 }
 function projectCard(p) {
   var st = projectStats(p.id);
   var stt = SITE_STATUS[p.status] || SITE_STATUS.active;
+  var nm = str(p.name).trim(), cl = str(p.client).trim();
+  /* 카드 제목·첫 줄은 발주처 — 프로젝트명이 비어 있으면 발주처가 이름 노릇을 한다 */
+  var head = cl || nm || str(p.no).trim() || '(이름 없음)';
+  var sub = (cl && nm) ? nm : (nm ? '발주처 미입력' : '');
   return '<div class="entity' + (selHas('projects', p.id) ? ' is-selected' : '') + '" data-entity-id="' + p.id + '">'
     + '<div class="entity-head">'
-    + bulkCheckbox('projects', p.id, p.name)
+    + bulkCheckbox('projects', p.id, projectPickLabel(p))
     + '<div class="entity-icon tone-blue">' + icon('layers', 20) + '</div>'
-    + '<div class="entity-title">' + esc(p.name) + '<div class="entity-sub">' + esc(p.client || '발주처 미입력') + '</div></div>'
+    + '<div class="entity-title">' + esc(head) + (sub ? '<div class="entity-sub">' + esc(sub) + '</div>' : '') + '</div>'
     + badge(stt.cls, stt.label)
     + '</div>'
     + '<div class="meta-list">'
+    + '<div><span>발주처</span><b>' + esc(cl || '-') + '</b></div>'
+    + '<div><span>프로젝트명</span><b>' + (nm ? esc(nm) : '-') + '</b></div>'
     + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
     + '<div><span>계약일</span><b>' + projectDateCell(p.contract) + '</b></div>'
     + '<div><span>착공일</span><b>' + projectDateCell(p.start) + '</b></div>'
@@ -2422,8 +2448,8 @@ function projectCard(p) {
     + '</div>'
     + '<div class="entity-foot">'
     + '<button class="btn btn-ghost btn-sm" data-action="project-detail" data-id="' + p.id + '">업무 보기</button>'
-    + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="수정">' + icon('edit', 15) + '</button>'
-    + '<button class="icon-sm danger" data-action="del-project" data-id="' + p.id + '" aria-label="삭제">' + icon('trash', 15) + '</button>'
+    + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="' + esc(projectPickLabel(p)) + ' 수정">' + icon('edit', 15) + '</button>'
+    + '<button class="icon-sm danger" data-action="del-project" data-id="' + p.id + '" aria-label="' + esc(projectPickLabel(p)) + ' 삭제">' + icon('trash', 15) + '</button>'
     + '</div></div>';
 }
 
@@ -3212,6 +3238,19 @@ function projectByName(name, target) {
   for (var i = 0; i < list.length; i++) if (nameKey(list[i].name) === k) return list[i];
   return null;
 }
+/* 공사코드 없이 발주처만 있는 프로젝트를 발주처명으로 찾는다.
+   업체 결제 현황의 공사명이 발주처로 들어오면서 생긴 프로젝트를 다시 만들지 않기 위해 쓴다.
+   공사코드가 있는 프로젝트는 코드로만 찾는다(발주처가 같아도 다른 공사일 수 있다). */
+function projectByClient(client, target) {
+  var t = target || db, k = nameKey(client);
+  if (!k) return null;
+  var list = arr(t.projects);
+  for (var i = 0; i < list.length; i++) {
+    if (str(list[i].no).trim()) continue;
+    if (nameKey(list[i].client) === k) return list[i];
+  }
+  return null;
+}
 function siteByName(name, target) {
   var t = target || db, k = nameKey(name);
   if (!k) return null;
@@ -3257,11 +3296,18 @@ function ensureProject(o, target) {
     var byName = projectByName(pname, t);
     if (byName && (!no || !str(byName.no).trim())) p = byName;
   }
+  /* 프로젝트명 없이 발주처만 넘어온 경우(업체 결제 현황의 공사명=발주처)는 발주처명으로 찾는다 */
+  if (!p && !pname && client) p = projectByClient(client, t);
   if (p) {
     /* 이미 있는 프로젝트는 빈 칸만 보충한다(중복 생성 금지) */
     var changed = false;
     if (no && !str(p.no).trim()) { p.no = no; changed = true; }
-    if (client && !str(p.client).trim()) { p.client = client; changed = true; }
+    var hadClient = str(p.client).trim();
+    if (client && !hadClient) {
+      p.client = client; changed = true;
+      /* 예전 버전에서 프로젝트명에 발주처명이 들어가 있던 항목은 프로젝트명을 비운다 */
+      if (!pname && nameKey(p.name) === nameKey(client)) { p.name = ''; changed = true; }
+    }
     var placeholder = nameKey(p.name) === nameKey(p.client);
     if (pname && (!str(p.name).trim() || (placeholder && nameKey(pname) !== nameKey(p.name)))) { p.name = pname; changed = true; }
     if (isISODate(o.contract) && !str(p.contract).trim()) { p.contract = o.contract; changed = true; }
@@ -3270,9 +3316,9 @@ function ensureProject(o, target) {
     if (changed && isLive) saveDB();
     return p;
   }
-  if (!pname && !(no && client)) return null;
+  if (!pname && !client) return null;
   var np = normProject({
-    no: no, name: pname || client, client: client, siteId: '', contract: o.contract,
+    no: no, name: pname, client: client, siteId: '', contract: o.contract,
     start: o.start, end: o.end, memo: o.memo, status: 'active'
   });
   np.id = uid('prj');
@@ -3282,7 +3328,7 @@ function ensureProject(o, target) {
   if (!Array.isArray(t.projects)) t.projects = [];
   t.projects.push(np);
   if (isLive) saveDB();
-  if (!o.quiet && isLive) toast('새 프로젝트(' + (np.name || np.no) + ')를 프로젝트 관리에 등록했습니다.');
+  if (!o.quiet && isLive) toast('새 프로젝트(' + (np.name || np.client || np.no) + ')를 프로젝트 관리에 등록했습니다.');
   return np;
 }
 /* 프로젝트 선택 드롭다운 옆에 두는 '새 프로젝트 직접 입력' 칸 */
@@ -3305,11 +3351,10 @@ function openProjectModal(id) {
   if (id && !p) return;
   var d = p || { name: '', client: '', siteId: '', contract: '', start: '', end: '', status: 'active', memo: '' };
   var body = '<form id="projectForm" class="modal-body" data-id="' + (p ? p.id : '') + '" novalidate><div class="form-grid">'
-    + '<div class="f full"><label>프로젝트명 <span class="req">*</span></label>'
-    + '<input name="name" maxlength="80" value="' + esc(d.name) + '" placeholder="예) A현장 골조공사"></div>'
-    + '<div class="f"><label>발주처</label><input name="client" maxlength="60" value="' + esc(d.client) + '" placeholder="예) ○○건설"></div>'
+    + '<div class="f"><label>발주처</label><input name="client" maxlength="60" value="' + esc(d.client) + '" placeholder="예) ○○건설 / 용두농협"></div>'
+    + '<div class="f"><label>프로젝트명</label><input name="name" maxlength="80" value="' + esc(d.name) + '" placeholder="예) A현장 골조공사"></div>'
+    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력하면 발주처 이름의 현장이 현장관리에 자동으로 만들어져 연결됩니다(같은 이름의 현장이 있으면 그 현장을 씁니다). 프로젝트명은 비워 두어도 되고, 비우면 표·카드에 발주처가 대표 이름으로 나옵니다.</div></div>'
     + '<div class="f"><label>현장</label><select name="siteId">' + siteOptions(d.siteId) + '</select></div>'
-    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력하거나 고치면 발주처 이름의 현장이 현장관리에 자동으로 만들어져 연결됩니다(같은 이름의 현장이 있으면 그 현장을 씁니다). 현장 칸에서 다른 현장을 직접 고르면 그 현장을 그대로 씁니다.</div></div>'
     + '<div class="date-grid">'
     + '<div class="f"><label>계약일</label><input type="date" name="contract" value="' + esc(d.contract) + '"></div>'
     + '<div class="f"><label>착공일</label><input type="date" name="start" value="' + esc(d.start) + '"></div>'
@@ -3323,10 +3368,10 @@ function openProjectModal(id) {
 }
 function saveProjectForm(form) {
   var id = form.getAttribute('data-id');
-  var name = fv(form, 'name');
-  if (!name) return fieldError(form, 'name', '프로젝트명을 입력해 주세요.');
+  var name = fv(form, 'name'), client = fv(form, 'client');
+  if (!name && !client) return fieldError(form, 'client', '발주처나 프로젝트명 중 하나는 입력해 주세요.');
   var payload = {
-    name: name, client: fv(form, 'client'), siteId: fv(form, 'siteId'),
+    name: name, client: client, siteId: fv(form, 'siteId'),
     contract: isISODate(fv(form, 'contract')) ? fv(form, 'contract') : '',
     start: isISODate(fv(form, 'start')) ? fv(form, 'start') : '',
     end: isISODate(fv(form, 'end')) ? fv(form, 'end') : '',
@@ -3540,6 +3585,7 @@ function openProjectDetail(id) {
     + (st.late ? '<span class="badge red">지연 ' + st.late + '건</span>' : '') + '</div>'
     + '<div class="meta-list">'
     + '<div><span>발주처</span><b>' + esc(p.client || '-') + '</b></div>'
+    + '<div><span>프로젝트명</span><b>' + (str(p.name).trim() ? esc(p.name) : '-') + '</b></div>'
     + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
     + '<div><span>계약일</span><b>' + (isISODate(p.contract) ? projectDateText(p.contract) : '-') + '</b></div>'
     + '<div><span>착공일</span><b>' + (isISODate(p.start) ? projectDateText(p.start) : '-') + '</b></div>'
@@ -3552,7 +3598,7 @@ function openProjectDetail(id) {
     + '</div>';
   var foot = '<button class="btn btn-ghost" data-action="close-modal">닫기</button>'
     + '<button class="btn btn-primary" data-action="new-task" data-project="' + p.id + '" data-site="' + esc(p.siteId) + '">' + icon('plus', 15) + ' 업무 추가</button>';
-  openModal({ title: p.name, body: body, foot: foot, wide: true });
+  openModal({ title: projectTitle(p) || '프로젝트', body: body, foot: foot, wide: true });
 }
 function openSiteDetail(id) {
   var s = byId(db.sites, id);
@@ -4290,16 +4336,20 @@ function laborProjectCandidates() {
   }
   /* 프로젝트관리에만 있는 프로젝트도 선택할 수 있게 추가 */
   arr(db.projects).forEach(function (p) {
+    var pno = str(p.no).trim(), pnm = str(p.name).trim(), pcl = str(p.client).trim();
     var dup = list.some(function (cand) {
       if (cand.projectId && cand.projectId === p.id) return true;
       if (cand.projectId) return false; /* 다른 프로젝트 — 이름이 같아도 별도 */
+      if (pno && str(cand.no).trim() === pno) return true;
+      /* 프로젝트명이 비어 있으면 발주처명으로 공사를 찾는다 */
       var n = laborNormKey(cand.name);
-      return !!n && n === laborNormKey(p.name);
+      if (!n) return false;
+      return n === laborNormKey(pnm) || (!pnm && n === laborNormKey(pcl));
     });
     if (dup) return;
     var key = 'p:' + p.id;
     if (index[key]) return;
-    var cand = { key: key, projectId: p.id, no: '', name: p.name, client: p.client, months: {}, monthList: [] };
+    var cand = { key: key, projectId: p.id, no: pno, name: pnm, client: pcl, months: {}, monthList: [] };
     index[key] = cand;
     list.push(cand);
   });
@@ -4905,7 +4955,7 @@ function openImportCompanies() {
   });
   db.projects.forEach(function (p) {
     items.push('<div class="list-row" style="padding:9px 4px"><span class="badge personal">프로젝트</span>'
-      + '<span class="task-title">' + esc(p.name) + ' <span class="muted" style="font-weight:600">' + esc(p.client || '') + '</span></span>'
+      + '<span class="task-title">' + esc(projectTitle(p)) + (str(p.name).trim() && p.client ? ' <span class="muted" style="font-weight:600">' + esc(p.client) + '</span>' : '') + '</span>'
       + '<button class="btn btn-ghost btn-sm" data-action="labor-add-company" data-kind="project" data-id="' + p.id + '">추가</button></div>');
   });
   var body = '<div class="modal-body">'
@@ -8225,7 +8275,7 @@ function deleteProject(id) {
   var linked = projectStats(id).total;
   openConfirm({
     title: '프로젝트 삭제',
-    message: '"' + p.name + '" 프로젝트를 삭제할까요?\n' + (linked ? '연결된 업무 ' + linked + '건은 삭제되지 않고 프로젝트 연결만 해제됩니다.' : '연결된 업무는 없습니다.'),
+    message: '"' + projectTitle(p) + '" 프로젝트를 삭제할까요?\n' + (linked ? '연결된 업무 ' + linked + '건은 삭제되지 않고 프로젝트 연결만 해제됩니다.' : '연결된 업무는 없습니다.'),
     confirmLabel: '삭제', onConfirm: function () {
       db.projects = db.projects.filter(function (x) { return x.id !== id; });
       db.tasks.forEach(function (t) { if (t.projectId === id) t.projectId = ''; });
@@ -8487,7 +8537,10 @@ function vendorProjectList() {
     var key = 'p:' + p.id;
     if (map[key]) return;
     map[key] = true;
-    out.push({ code: '', name: str(p.name).trim(), projectId: p.id, client: str(p.client).trim() });
+    /* 프로젝트명이 비어 있으면 발주처명을 공사명 칸에 쓴다 */
+    var nm = str(p.name || p.client).trim();
+    if (!nm) return;
+    out.push({ code: '', name: nm, client: str(p.client).trim(), projectId: p.id });
   });
   out.sort(function (a, b) { return (a.code || '힣').localeCompare(b.code || '힣') || a.name.localeCompare(b.name); });
   return out;
@@ -8734,7 +8787,7 @@ function openVendorModal(id) {
   var projects = vendorProjectList();
   var pick = '<option value="">직접 입력</option>' + projects.map(function (p) {
     var val = (p.code || '') + '||' + (p.name || '');
-    var label = (p.code ? '[' + p.code + '] ' : '') + (p.name || '이름 없음') + (p.client ? ' · ' + p.client : '');
+    var label = (p.code ? '[' + p.code + '] ' : '') + (p.name || p.client || '이름 없음') + (p.client && p.name && p.client !== p.name ? ' · ' + p.client : '');
     var on = (p.code && p.code === str(d.code).trim() && (p.name || '') === str(d.name).trim());
     return '<option value="' + esc(val) + '"' + (on ? ' selected' : '') + '>' + esc(label) + '</option>';
   }).join('');
@@ -8898,13 +8951,17 @@ function saveVendorForm(form) {
   }
   saveVendor(); closeModal(); render();
 }
-/* 업체 결제 내역의 공사코드·공사명을 프로젝트 관리와 맞춘다(없으면 등록) */
+/* 업체 결제 내역의 공사코드·공사명을 프로젝트 관리와 맞춘다(없으면 등록).
+   공사명은 발주처로 넣고 프로젝트명은 비워 둔다(발주처 칸이 따로 있는 자료만 공사명을 프로젝트명으로 쓴다). */
 function syncVendorProject(it, target) {
   if (!it) return null;
+  var code = vendorItemCode(it);
+  var client = vendorItemClient(it);
+  var pname = vendorProjectName(it);
   return ensureProject({
-    no: vendorItemCode(it),
-    name: vendorProjectName(it),
-    client: vendorItemClient(it),
+    no: code,
+    name: client ? pname : '',
+    client: client || pname,
     contract: vendorItemContractDate(it),
     quiet: true
   }, target);
@@ -8968,28 +9025,63 @@ function vendorSyncItems(target) {
   if (!list.length && !vendorStoreSaved()) list = arr(window.VENDOR_SEED);
   return list;
 }
+/* 업체 결제 현황에서 온 공사를 프로젝트에 넣을 때 쓰는 발주처명.
+   시트의 공사명이 발주처명이므로 발주처 칸이 없으면 공사명을 발주처로 쓴다. */
+function vendorGroupClient(g) {
+  return str(g && (g.client || g.name)).replace(/\s*\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 60);
+}
+/* 이전 버전(43748be~2ee4870)은 2026공사 공사명을 프로젝트명(name)에 넣고 발주처(client)를 비워 두었다.
+   발주처가 비어 있고 프로젝트명이 2026공사 발주처명과 같은 프로젝트만 발주처로 옮기고 프로젝트명을 비운다.
+   발주처가 이미 채워진 수동·수정 프로젝트는 건드리지 않는다. */
+function migrateVendorProjectsToClient(t, items) {
+  var groups = vendorProjectGroupsOf(items || vendorSyncItems(t));
+  var names = {};
+  groups.forEach(function (g) {
+    if (str(g.client).trim()) return;   /* 발주처 칸이 있는 자료의 공사명은 진짜 프로젝트명 */
+    var c = vendorGroupClient(g);
+    if (c) names[nameKey(c)] = true;
+  });
+  var moved = 0;
+  arr(t.projects).forEach(function (p) {
+    if (str(p.client).trim()) return;
+    var nm = str(p.name).trim();
+    if (!nm || !names[nameKey(nm)]) return;
+    p.client = nm.slice(0, 100);
+    p.name = '';
+    var site = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.client }, t);
+    if (site && !str(p.siteId)) p.siteId = site.id;
+    moved += 1;
+  });
+  return moved;
+}
 /* 업체 결제 현황의 모든 공사를 프로젝트 관리(과 발주처 현장)에 반영한다.
-   - 이미 있는 프로젝트(공사코드 또는 프로젝트명 일치)는 새로 만들지 않고 비어 있는 칸만 보충한다.
+   - 공사명은 프로젝트명이 아니라 발주처(client)로 넣고 프로젝트명은 비워 둔다.
+   - 이미 있는 프로젝트(공사코드 또는 공사명 일치)는 새로 만들지 않고 비어 있는 칸만 보충한다.
    - 같은 발주처는 현장 1개를 다시 쓰므로 몇 번을 실행해도 늘지 않는다.
    - targetDb 를 주면 그 데이터에 반영한다(백업 복원·초기화 직후처럼 db 를 새로 만든 뒤). */
 function syncVendorProjectsToProjects(targetDb, opts) {
   opts = opts || {};
   var t = (targetDb && typeof targetDb === 'object') ? targetDb : db;
   var items = vendorSyncItems(t);
-  var groups = vendorProjectGroupsOf(items);
+  var moved = migrateVendorProjectsToClient(t, items);
   var before = arr(t.projects).length;
+  var groups = vendorProjectGroupsOf(items);
   var linked = 0;
   groups.forEach(function (g) {
-    if (!g.name && !(g.code && g.client)) return;
-    var p = ensureProject({ no: g.code, name: g.name, client: g.client, contract: g.contract, quiet: true }, t);
+    var code = str(g.code).trim();
+    var client = vendorGroupClient(g);
+    /* 발주처 칸이 따로 있는 자료만 공사명을 프로젝트명으로 쓴다 */
+    var pname = str(g.client).trim() ? str(g.name).trim() : '';
+    if (!code && !client) return;
+    var p = ensureProject({ no: code, name: pname, client: client, contract: g.contract, quiet: true }, t);
     if (p) linked += 1;
   });
   var added = arr(t.projects).length - before;
-  if (t === db && added > 0) saveDB();
+  if (t === db && (added > 0 || moved > 0)) saveDB();
   if (added > 0 && !opts.silent) {
     toast('업체 결제 현황의 공사 ' + linked + '개를 프로젝트 관리에 등록했습니다.');
   }
-  return { total: groups.length, linked: linked, added: added, items: items.length };
+  return { total: groups.length, linked: linked, added: added, moved: moved, items: items.length };
 }
 function vendorDuplicate(id) {
   var it = vendorById(id);
