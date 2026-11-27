@@ -1283,6 +1283,7 @@ var ui = {
   laborFind: null,
   laborSel: {},
   travelId: null,
+  travelEditing: false,
   travelTab: 'write',
   travelNewType: 'daily',
   travelFind: null,
@@ -2634,7 +2635,10 @@ function go(view, opts) {
     if (!ui.laborMonth) ui.laborMonth = currentMonthKey();
     if (!labor.months[ui.laborMonth]) labor.months[ui.laborMonth] = emptyLaborMonth(ui.laborMonth);
   }
-  if (view === 'travel' && ui.travelId && !travelReport(ui.travelId)) ui.travelId = null;
+  if (view === 'travel') {
+    ui.travelEditing = false;
+    if (ui.travelId && !travelReport(ui.travelId)) ui.travelId = null;
+  }
   closePops();
   render();
   closeSidebar();
@@ -5567,7 +5571,6 @@ function travelEditorHead(rep, t) {
     + '<div class="head-sub" data-trv-period>' + esc(trvRangeFull(rep)) + '</div></div>'
     + '<div class="head-actions">'
     + travTypeBadge(rep)
-    + '<button class="btn btn-ghost btn-sm" data-action="travel-back">' + icon('chevron-left', 15) + ' 목록</button>'
     + '<button class="btn btn-ghost btn-sm" data-action="travel-dup" data-id="' + rep.id + '">' + icon('copy', 15) + ' 복제</button>'
     + '<button class="btn btn-ghost btn-sm" data-action="travel-json" data-id="' + rep.id + '" title="이 정산서 1건만 JSON 파일로 저장">' + icon('save', 15) + ' 파일 저장</button>'
     + '<button class="btn btn-primary btn-sm" data-action="travel-export" data-id="' + rep.id + '">' + icon('download', 15) + ' 엑셀 내보내기</button>'
@@ -5908,13 +5911,22 @@ function travelNew(type) {
   ui.travelNewType = tp;
   travel.reports.push(rep);
   ui.travelId = rep.id;
+  ui.travelEditing = true;
   saveTravel();
   render();
+  try { window.scrollTo(0, 0); } catch (e) { }
   toast((travIsStaff(rep) ? '상용직' : '일용직') + ' 출장비 정산서를 만들었습니다.');
 }
 function travelOpen(id) {
   ui.travelId = id || null;
+  ui.travelEditing = !!ui.travelId;
   render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+function travelBackToList() {
+  ui.travelEditing = false;
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
 }
 function travelDuplicate(id) {
   var src = travelReport(id);
@@ -5925,8 +5937,10 @@ function travelDuplicate(id) {
   var at = travel.reports.indexOf(src);
   travel.reports.splice(at + 1, 0, copy);
   ui.travelId = copy.id;
+  ui.travelEditing = true;
   saveTravel();
   render();
+  try { window.scrollTo(0, 0); } catch (e) { }
   toast('정산서를 복제했습니다.');
 }
 function travelDelete(id) {
@@ -5938,7 +5952,7 @@ function travelDelete(id) {
     confirmLabel: '삭제', danger: true,
     onConfirm: function () {
       travel.reports = travel.reports.filter(function (r) { return r.id !== id; });
-      if (ui.travelId === id) ui.travelId = null;
+      if (ui.travelId === id) { ui.travelId = null; ui.travelEditing = false; }
       saveTravel();
       render();
       toast('정산서를 삭제했습니다.');
@@ -5953,8 +5967,10 @@ function travelLoadSample(type) {
   ui.travelNewType = tp;
   travel.reports.push(rep);
   ui.travelId = rep.id;
+  ui.travelEditing = true;
   saveTravel();
   render();
+  try { window.scrollTo(0, 0); } catch (e) { }
   toast((travIsStaff(rep) ? '이병철 이사 상용직' : '홍영익 소장 일용직') + ' 정산서 샘플을 불러왔습니다. 총액 ' + won(trvTotals(rep).total));
 }
 
@@ -6031,6 +6047,7 @@ function travelImportReports(rawList, label) {
   travel.reports = added.concat(travel.reports);
   ui.travelTab = 'write';
   ui.travelId = added[0].id;
+  ui.travelEditing = true;
   ui.travelNewType = travIsStaff(added[0]) ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
   saveTravel();
   render();
@@ -6961,6 +6978,7 @@ function travelTabs() {
 function setTravelTab(tab) {
   ui.travelTab = tab === 'find' ? 'find' : 'write';
   if (ui.travelTab === 'find') travelFindState();
+  else ui.travelEditing = false;
   render();
   try { window.scrollTo(0, 0); } catch (e) { }
 }
@@ -7360,6 +7378,7 @@ function travelOpenFromFind(id) {
   if (!travelReport(id)) { toast('정산서를 찾을 수 없습니다. 삭제된 정산서일 수 있습니다.', 'alert'); return; }
   ui.travelId = id;
   ui.travelTab = 'write';
+  ui.travelEditing = true;
   render();
   try { window.scrollTo(0, 0); } catch (e) { }
 }
@@ -7390,14 +7409,8 @@ function exportTravelFindCSV() {
 }
 
 /* ---------------- 화면 ---------------- */
-function viewTravel() {
-  if (ui.travelTab === 'find') return travelTabs() + viewTravelFind();
-  var reports = travel.reports;
-  var cur = travelCur();
-  if (ui.travelId && !cur) ui.travelId = null;
-  if (!ui.travelId && reports.length) ui.travelId = reports[0].id;
-  cur = travelCur();
-  if (cur) ui.travelNewType = cur.type === TRAVEL_TYPE_STAFF ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
+/* 정산서 작성 탭의 메인 목록 화면: 저장된 정산서만 보여준다 */
+function viewTravelList(reports) {
   var newType = ui.travelNewType === TRAVEL_TYPE_STAFF ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
   var sumAll = 0, staffCount = 0;
   reports.forEach(function (r) {
@@ -7405,9 +7418,10 @@ function viewTravel() {
     if (travIsStaff(r)) staffCount += 1;
   });
   var head = '<div class="view-head"><div class="view-head-text">'
-    + '<p class="view-sub">정산서 ' + reports.length + '건 (일용직 ' + (reports.length - staffCount) + ' · 상용직 ' + staffCount + ') · 전체 지출 ' + won(sumAll) + '</p>'
-    + (reports.length ? '<span class="pill-count">' + icon('clipboard', 12) + ' ' + (cur ? esc(trvPersonBare(cur) || '이름 없음') : '-') + ' 편집 중</span>' : '')
-    + '</div><div class="head-actions" style="margin-left:auto">'
+    + '<p class="view-sub">' + (reports.length
+      ? '저장된 정산서 ' + reports.length + '건 (일용직 ' + (reports.length - staffCount) + ' · 상용직 ' + staffCount + ') · 전체 지출 ' + won(sumAll)
+      : '일용직·상용직 출장비 정산서를 만들어 엑셀 양식으로 내보낼 수 있습니다.')
+    + '</p></div><div class="head-actions" style="margin-left:auto">'
     + '<label class="trv-type-pick"><span>유형</span><select id="travelNewType" aria-label="새 정산서 유형">'
     + options([[TRAVEL_TYPE_DAILY, '일용직 정산서'], [TRAVEL_TYPE_STAFF, '상용직 정산서']], newType)
     + '</select></label>'
@@ -7416,7 +7430,25 @@ function viewTravel() {
     + '<button class="btn btn-primary" data-action="travel-new">' + icon('plus', 16) + ' 새 정산서</button>'
     + '<input type="file" id="travelImportFile" accept="' + TRAVEL_IMPORT_ACCEPT + '" hidden>'
     + '</div></div>';
-  return travelTabs() + head + travelListCard(reports, cur) + (cur ? '<div style="height:16px"></div>' + travelEditor(cur) : '');
+  return travelTabs() + head + travelListCard(reports, null)
+    + (reports.length ? '<div class="labor-note">행을 누르면 그 정산서의 작성·편집 화면이 열립니다. 파일 저장은 그 정산서 1건만 JSON으로, 복제는 같은 내용으로 새 정산서를 만들 때, 삭제는 그 정산서만 지웁니다.</div>' : '');
+}
+function travelEditorNav(rep) {
+  return '<div class="labor-edit-nav">'
+    + '<button class="btn btn-ghost btn-sm" data-action="travel-back">' + icon('chevron-left', 15) + ' 목록</button>'
+    + '<span class="labor-edit-crumb">출장비 정산서 <span class="sep">/</span> <b>' + esc(trvPersonBare(rep) || '이름 없음') + '</b></span>'
+    + (str(rep.dept).trim() ? '<span class="badge blue">' + esc(str(rep.dept).trim()) + '</span>' : '')
+    + '</div>';
+}
+function viewTravel() {
+  if (ui.travelTab === 'find') return travelTabs() + viewTravelFind();
+  var reports = travel.reports;
+  var cur = travelCur();
+  if (ui.travelId && !cur) { ui.travelId = null; ui.travelEditing = false; }
+  if (ui.travelEditing && !cur) ui.travelEditing = false;
+  if (!ui.travelEditing) return viewTravelList(reports);
+  ui.travelNewType = cur.type === TRAVEL_TYPE_STAFF ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
+  return travelTabs() + travelEditorNav(cur) + travelEditor(cur);
 }
 
 /* ------------------------- mutations ------------------------- */
@@ -8716,6 +8748,7 @@ function resetAll() {
       travelPeople = travelPeopleDefault();
       try { window.localStorage.removeItem(TRAVEL_PEOPLE_KEY); } catch (e) { }
       ui.travelId = null;
+      ui.travelEditing = false;
       vendor = emptyVendor();
       try { window.localStorage.removeItem(VENDOR_KEY); } catch (e) { }
       ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
@@ -8907,7 +8940,7 @@ document.addEventListener('click', function (e) {
     case 'travel-import': travelPickFile(); break;
     case 'travel-json': travelExportJson(id); break;
     case 'travel-open': travelOpen(id); break;
-    case 'travel-back': ui.travelId = null; render(); break;
+    case 'travel-back': travelBackToList(); break;
     case 'travel-dup': travelDuplicate(id); break;
     case 'travel-del': travelDelete(id); break;
     case 'travel-export': exportTravelXlsx(id); break;
