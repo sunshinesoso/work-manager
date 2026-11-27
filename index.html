@@ -8401,7 +8401,7 @@ function vendorTable(list) {
     var st = vendorStatus(x);
     var meta = VENDOR_STATUS[st];
     var dates = [x.date1, x.date2, x.date3].map(vxDateLine).filter(function (s) { return s; }).join(' / ');
-    var barW = Math.max(0, Math.min(100, Number(c.rate) || 0));
+    var barW = Math.max(0, Math.min(100, (Number(c.rate) || 0) * 100));
     var rateTxt = vxRate(c.rate);
     var billSub = c.T ? '청구 ' + vxWonNum(c.T) + ' · 청구후잔액 ' + vxWonNum(c.V) : '';
     return '<tr data-action="vendor-edit" data-id="' + x.id + '">'
