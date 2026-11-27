@@ -775,6 +775,14 @@ ul{margin:0;padding:0;list-style:none}
 .vx-table .vx-name{white-space:normal;min-width:104px}
 .vx-table .num.vx-due{color:#DC2626;font-weight:800}
 .vx-table tfoot td{background:#F8FAFC;font-weight:800;border-top:1px solid #E2E8F0;white-space:nowrap;font-size:12px}
+.vx-sort-th{white-space:nowrap}
+.vx-sort{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 7px;border:1px solid transparent;border-radius:7px;background:transparent;color:#64748B;font-family:inherit;font-size:11.5px;font-weight:800;line-height:1;cursor:pointer;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+.vx-sort:hover{border-color:#C7D2E3;background:#EEF2F8;color:#1E293B}
+.vx-sort:focus-visible{outline:none;border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.vx-sort .ic{display:inline-block;width:10px;text-align:center;font-size:11px;color:#94A3B8;font-weight:900;font-variant-numeric:tabular-nums}
+.vx-sort.on{color:#1D4ED8;background:#EEF4FF;border-color:#BBD0F5;box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+.vx-sort.on .ic{color:#2563EB}
+.vx-sort.on:hover{background:#E4EDFF;border-color:#A9C5F2;color:#1D4ED8}
 .vx-sub{font-size:10.5px;color:#94A3B8;font-weight:600;margin-top:2px;white-space:normal;max-width:150px;margin-left:auto;line-height:1.3;text-align:right}
 .vx-form .vx-sec{grid-column:1/-1;font-size:11px;font-weight:800;color:#94A3B8;letter-spacing:.4px;margin-top:4px;padding-top:10px;border-top:1px dashed #E7EDF5}
 .vx-calc{display:block;min-height:15px;margin-top:3px;font-size:11px;font-weight:700;color:#1D4ED8}
@@ -7664,11 +7672,12 @@ function vendorById(id) { return byId(vendor.items, id); }
 
 /* ---------------- 목록 · 필터 ---------------- */
 function vendorFilterState() {
-  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
+  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
   var f = ui.vendor;
   if (typeof f.q !== 'string') f.q = '';
   if (typeof f.project !== 'string') f.project = 'all';
   if (typeof f.vendor !== 'string') f.vendor = 'all';
+  if (f.sort !== 'rate-asc' && f.sort !== 'rate-desc') f.sort = '';
   /* 예전 단일 선택(status) 값이 남아 있으면 다중 선택 목록으로 옮긴다 */
   if (!Array.isArray(f.statuses)) {
     f.statuses = (typeof f.status === 'string' && f.status !== 'all' && VENDOR_STATUS[f.status]) ? [f.status] : [];
@@ -7722,7 +7731,7 @@ function vendorVendorList() {
   return out;
 }
 function vendorSorted(list) {
-  return list.slice().sort(function (a, b) {
+  var base = list.slice().sort(function (a, b) {
     var ac = str(a.code).trim() || '힣힣', bc = str(b.code).trim() || '힣힣';
     if (ac !== bc) return ac < bc ? -1 : 1;
     var an = str(a.name).trim(), bn = str(b.name).trim();
@@ -7730,6 +7739,22 @@ function vendorSorted(list) {
     var av = str(a.vendor).trim(), bv = str(b.vendor).trim();
     return av < bv ? -1 : av > bv ? 1 : 0;
   });
+  var mode = vendorFilterState().sort;
+  if (mode !== 'rate-asc' && mode !== 'rate-desc') return base;
+  var dir = mode === 'rate-asc' ? 1 : -1;
+  /* 화면에 보이는 지급율(소수 1자리) 기준으로 묶고, 같은 지급율은 기본 순서(프로젝트→공사명→상호) 유지 */
+  return base.sort(function (a, b) {
+    var ka = vxRateKey(vendorCalc(a).rate), kb = vxRateKey(vendorCalc(b).rate);
+    if (ka === kb) return 0;
+    return (ka < kb ? -1 : 1) * dir;
+  });
+}
+function vxRateKey(r) { return Math.round((r || 0) * 1000); }
+/* 지급율 정렬: 기본 → 오름차순 → 내림차순 → 기본 */
+function vendorCycleRateSort() {
+  var f = vendorFilterState();
+  f.sort = f.sort === 'rate-asc' ? 'rate-desc' : f.sort === 'rate-desc' ? '' : 'rate-asc';
+  render();
 }
 function vendorBaseList() {
   var f = vendorFilterState();
@@ -7846,10 +7871,21 @@ function vendorTable(list) {
       + '<button class="icon-sm danger" type="button" data-action="vendor-del" data-id="' + x.id + '" aria-label="삭제">' + icon('trash', 15) + '</button>'
       + '</div></td></tr>';
   }).join('');
+  var sortMode = vendorFilterState().sort;
+  var sortIc = sortMode === 'rate-asc' ? '↑' : sortMode === 'rate-desc' ? '↓' : '↕';
+  var sortAria = sortMode === 'rate-asc'
+    ? '지급율 오름차순으로 정렬됨. 다시 누르면 내림차순'
+    : sortMode === 'rate-desc'
+      ? '지급율 내림차순으로 정렬됨. 다시 누르면 기본 순서'
+      : '지급율 정렬 안 됨. 누르면 오름차순';
+  var sortTh = '<th class="num vx-sort-th" aria-sort="'
+    + (sortMode === 'rate-asc' ? 'ascending' : sortMode === 'rate-desc' ? 'descending' : 'none') + '">'
+    + '<button type="button" class="vx-sort' + (sortMode ? ' on' : '') + '" data-action="vendor-sort-rate"'
+    + ' title="' + esc(sortAria) + '" aria-label="지급율 ' + esc(sortAria) + '">지급율<span class="ic" aria-hidden="true">' + sortIc + '</span></button></th>';
   return '<div class="table-scroll"><table class="labor-table vx-table">'
     + '<thead><tr>'
     + '<th>프로젝트</th><th>공사명</th><th>상호</th>'
-    + '<th class="num">총계약금(원)</th><th class="num">지급금액(원)</th><th class="num">지급율</th>'
+    + '<th class="num">총계약금(원)</th><th class="num">지급금액(원)</th>' + sortTh
     + '<th class="num">잔액(원)</th><th class="num">청구건(원)</th><th class="num">청구후잔액(원)</th>'
     + '<th>상신일</th><th>상태</th><th style="text-align:right">관리</th>'
     + '</tr></thead><tbody>' + body + '</tbody>'
@@ -8110,7 +8146,7 @@ function vendorDelete(id) {
   });
 }
 function vendorResetFilter() {
-  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
   render();
 }
 /* 상태 칭 토글: 여러 개를 동시에 켜고 끌 수 있다 */
@@ -8136,7 +8172,7 @@ function vendorStatusAll() {
 /* ---------------- 원본 데이터 불러오기 ---------------- */
 function vendorApplyItems(items, label) {
   vendor.items = normalizeVendorItems(items);
-  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
   saveVendor(); render();
   toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.');
 }
@@ -8884,6 +8920,7 @@ document.addEventListener('click', function (e) {
     case 'vendor-export': exportVendorXlsx(); break;
     case 'vendor-csv': exportVendorCSV(); break;
     case 'vendor-reset-filter': vendorResetFilter(); break;
+    case 'vendor-sort-rate': vendorCycleRateSort(); break;
     case 'vendor-status': vendorToggleStatus(el.getAttribute('data-status')); break;
     case 'vendor-status-all': vendorStatusAll(); break;
     case 'travel-add-purpose': travelAddPurpose(); break;
