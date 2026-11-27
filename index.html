@@ -1052,6 +1052,7 @@ function normProject(p) {
   p = p || {};
   return {
     id: safeId(p.id, 'prj'),
+    no: str(p.no).slice(0, 40),
     name: str(p.name).slice(0, 100),
     client: str(p.client).slice(0, 100),
     siteId: safeRef(p.siteId),
@@ -2003,6 +2004,7 @@ function projectCard(p) {
     + badge(stt.cls, stt.label)
     + '</div>'
     + '<div class="meta-list">'
+    + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
     + '<div><span>현장</span><b>' + (p.siteId ? esc(siteName(p.siteId)) : '-') + '</b></div>'
     + '<div><span>기간</span><b>' + period + '</b></div>'
     + '<div><span>연결 업무</span><b>' + st.total + '건 (완료 ' + st.done + '건)</b></div>'
@@ -5190,7 +5192,7 @@ function travelDailyEditor(rep) {
 
   var detail = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('clipboard', 15) + ' 일자별 정산 내역</h3>'
-    + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다.</span></div>'
+    + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다. Enter 를 누르면 다음 칸으로 넘어가고, 맨 마지막 칸(투입인원)에서 Enter 를 누르면 다음 날 행이 추가됩니다.</span></div>'
     + '<div class="table-scroll trv-detail-scroll"><table class="table trv-table trv-detail"><thead><tr>'
     + '<th style="min-width:134px">월/일</th>'
     + TRAVEL_AMOUNTS.map(function (f) { return '<th class="num" style="min-width:' + (f.w || 120) + 'px">' + f.label + '</th>'; }).join('')
@@ -5258,7 +5260,7 @@ function travelStaffEditor(rep) {
 
   var detail = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('clipboard', 15) + ' 일자별 정산 내역</h3>'
-    + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다.</span></div>'
+    + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다. Enter 를 누르면 다음 칸으로 넘어가고, 맨 마지막 칸(비고)에서 Enter 를 누르면 다음 날 행이 추가됩니다.</span></div>'
     + '<div class="table-scroll trv-detail-scroll"><table class="table trv-table trv-detail trv-staff-detail"><thead><tr>'
     + '<th style="min-width:120px">월/일</th>'
     + amounts.map(function (f) { return '<th class="num" style="min-width:' + (f.w || 120) + 'px">' + f.label + '</th>'; }).join('')
@@ -5878,6 +5880,182 @@ function travelDelRow(i) {
   if (!rep.rows.length) rep.rows.push(emptyTravelRow(todayISO()));
   saveTravel();
   render();
+}
+
+/* ---------------- 엔터키로 다음 칸 이동 (엑셀처럼) ---------------- */
+/* 편집 카드 안의 입력칸을 화면 순서대로 모은다 */
+function trvFieldSelector(el) {
+  if (!el || !el.getAttribute) return '';
+  var i = str(el.getAttribute('data-i'));
+  var key = function (name) {
+    var v = el.getAttribute(name);
+    return v === null || v === undefined || v === '' ? null : v;
+  };
+  if (key('data-trv')) return '[data-trv="' + key('data-trv') + '"]';
+  if (key('data-trv-purpose-pick')) return '[data-trv-purpose-pick="' + key('data-trv-purpose-pick') + '"]';
+  if (key('data-trv-purpose-field')) return '[data-trv-purpose-field="' + key('data-trv-purpose-field') + '"][data-i="' + i + '"]';
+  if (key('data-trv-row-pick')) return '[data-trv-row-pick="' + key('data-trv-row-pick') + '"]';
+  if (key('data-trv-row-field')) return '[data-trv-row-field="' + key('data-trv-row-field') + '"][data-i="' + i + '"]';
+  return '';
+}
+function trvEnterFields() {
+  var card = document.querySelector('.trv-editor');
+  if (!card) return [];
+  var all = card.querySelectorAll('input, select');
+  var out = [];
+  for (var i = 0; i < all.length; i++) {
+    var el = all[i];
+    if (el.disabled || el.type === 'hidden' || el.type === 'file') continue;
+    if (!trvFieldSelector(el)) continue;
+    out.push(el);
+  }
+  return out;
+}
+/* 렌더로 카드가 새로 그려졌을 수 있으니 선택자로 다시 찾아 포커스를 준다 */
+function trvFocusSelector(sel) {
+  if (!sel) return;
+  setTimeout(function () {
+    var el = document.querySelector('.trv-editor') && document.querySelector('.trv-editor').querySelector(sel);
+    if (!el) return;
+    try { el.focus(); } catch (e) {}
+    if (el.tagName === 'INPUT' && el.type === 'text') { try { el.select(); } catch (e2) {} }
+    try { el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e3) {}
+  }, 0);
+}
+/* Enter 를 누른 칸의 값을 확실히 반영한다(계산·저장 먼저) */
+function trvCommitBeforeEnter(el) {
+  var rep = travelCur();
+  if (!rep || !el.getAttribute) return;
+  var v = el.value;
+  var t = el.getAttribute('data-trv');
+  if (t) { if (str(rep[t]) !== str(v)) travelSetField(t, v); return; }
+  var pf = el.getAttribute('data-trv-purpose-field');
+  if (pf) {
+    var pi = Number(el.getAttribute('data-i'));
+    if (rep.purposes[pi] && str(rep.purposes[pi][pf]) !== str(v)) travelSetPurposeField(pi, pf, v);
+    return;
+  }
+  var rf = el.getAttribute('data-trv-row-field');
+  if (rf) {
+    var ri = Number(el.getAttribute('data-i'));
+    var row = rep.rows[ri];
+    if (!row) return;
+    var same = rf === 'people'
+      ? Math.round(trvNum(row.people)) === Math.round(trvNum(v))
+      : str(row[rf]) === str(v);
+    if (!same) travelSetRowField(ri, rf, v);
+  }
+}
+/* 키보드 Enter 한 번 처리. 처리했으면 true */
+function trvEnterMove(e) {
+  var el = e.target;
+  if (!el || el.nodeType !== 1 || !el.getAttribute) return false;
+  var tag = (el.tagName || '').toUpperCase();
+  if ((tag !== 'INPUT' && tag !== 'SELECT') || el.disabled) return false;
+  if (!el.closest || !el.closest('.trv-editor')) return false;
+  if (!trvFieldSelector(el)) return false;
+  var rep = travelCur();
+  if (!rep) return false;
+  var staff = travIsStaff(rep);
+  var rf = el.getAttribute('data-trv-row-field');
+  var ri = rf ? Number(el.getAttribute('data-i')) : -1;
+  var lastCell = ri >= 0 && ((staff && rf === 'note') || (!staff && rf === 'people'));
+  var firstKey = travAmounts(rep)[0].key;
+  var list = null, idx = -1, nextSel = '';
+  if (!lastCell) {
+    list = trvEnterFields();
+    for (var i = 0; i < list.length; i++) { if (list[i] === el) { idx = i; break; } }
+    if (idx < 0) return false;
+    if (idx + 1 < list.length) nextSel = trvFieldSelector(list[idx + 1]);
+  }
+  e.preventDefault();
+  trvCommitBeforeEnter(el);
+  if (!lastCell) {
+    trvFocusSelector(nextSel);
+    return true;
+  }
+  var cur = travelCur();
+  var rows = cur ? cur.rows : [];
+  if (ri >= rows.length - 1) {
+    if (rows.length >= travMaxRows(cur)) {
+      toast('정산 내역은 ' + travelTypeLabel(cur) + ' 양식 기준 ' + travMaxRows(cur) + '행까지 넣을 수 있습니다.', 'alert');
+      return true;
+    }
+    travelAddRow(true);
+    var after = travelCur();
+    trvFocusSelector('[data-trv-row-field="' + firstKey + '"][data-i="' + (after.rows.length - 1) + '"]');
+    return true;
+  }
+  trvFocusSelector('[data-trv-row-field="' + firstKey + '"][data-i="' + (ri + 1) + '"]');
+  return true;
+}
+
+/* ---------------- 정산서에 직접 입력한 프로젝트를 프로젝트 관리에 자동 등록 ---------------- */
+function trvKeyOf(s) { return str(s).replace(/\s+/g, '').toLowerCase(); }
+function trvProjectByNo(no) {
+  var k = str(no).trim();
+  if (!k) return null;
+  var list = arr(db.projects);
+  for (var i = 0; i < list.length; i++) { if (str(list[i].no).trim() === k) return list[i]; }
+  return null;
+}
+function trvProjectByName(name) {
+  var k = trvKeyOf(name);
+  if (!k) return null;
+  var list = arr(db.projects);
+  for (var i = 0; i < list.length; i++) { if (trvKeyOf(list[i].name) === k) return list[i]; }
+  return null;
+}
+/* 정산서에 입력한 공사코드·업체명·공사내용을 프로젝트 관리(db.projects)와 맞춘다.
+   값이 확정된 시점(blur/change)에만 부르므로 타이핑 중에는 만들지 않는다. */
+function travelSyncProject(o) {
+  o = o || {};
+  var code = str(o.no).trim().slice(0, 40);
+  var client = str(o.client).trim().slice(0, 100);
+  var name = str(o.name).trim().slice(0, 100);
+  if (!code && !client && !name) return null;
+  /* 코드만 있으면 노무비 대장의 공사 정보로 업체명·공사내용을 보충 */
+  if (code && (!client || !name)) {
+    var c = trvCompanyByNo(code);
+    if (c) {
+      if (!client) client = str(c.client).trim().slice(0, 100);
+      if (!name) name = str(c.name).trim().slice(0, 100);
+    }
+  }
+  var p = (code ? trvProjectByNo(code) : null) || (name ? trvProjectByName(name) : null);
+  if (p) {
+    /* 이미 있는 프로젝트는 빈 칸만 보충한다(중복 생성 금지) */
+    var changed = false;
+    if (code && !str(p.no).trim() && !trvProjectByNo(code)) { p.no = code; changed = true; }
+    if (client && !str(p.client).trim()) { p.client = client; changed = true; }
+    var placeholder = trvKeyOf(p.name) === trvKeyOf(p.client);
+    if (name && (!str(p.name).trim() || (placeholder && trvKeyOf(name) !== trvKeyOf(p.name)))) {
+      p.name = name; changed = true;
+    }
+    if (changed) saveDB();
+    return p;
+  }
+  /* 새 프로젝트는 공사내용이 있거나 (공사코드 + 업체명)일 때만 만든다 */
+  if (!name && !(code && client)) return null;
+  var np = normProject({ no: code, name: name || client, client: client, siteId: '', start: '', end: '', status: 'active', memo: '' });
+  np.id = uid('prj');
+  np.createdAt = new Date().toISOString();
+  db.projects.push(np);
+  saveDB();
+  toast('새 프로젝트(' + (np.name || np.no) + ')가 프로젝트 관리에도 저장되었습니다.');
+  return np;
+}
+function travelSyncPurposeProject(i) {
+  var rep = travelCur();
+  if (!rep || !rep.purposes[i]) return;
+  var p = rep.purposes[i];
+  travelSyncProject({ no: p.no, client: p.client, name: p.work });
+}
+function travelSyncRowProject(i) {
+  var rep = travelCur();
+  if (!rep || !rep.rows[i]) return;
+  var r = rep.rows[i];
+  travelSyncProject({ no: r.no, client: r.client, name: '' });
 }
 
 /* ---------------- 엑셀 내보내기 ---------------- */
@@ -8035,6 +8213,17 @@ document.addEventListener('change', function (e) {
   var filter = el.getAttribute ? el.getAttribute('data-filter') : null;
   if (filter) { applyFilter(filter, el.value); return; }
 });
+document.addEventListener('focusout', function (e) {
+  /* 정산서에서 직접 입력한 프로젝트를 입력 완료 시점에 프로젝트 관리로 옮긴다 */
+  var el = e.target;
+  if (!el || el.nodeType !== 1 || !el.getAttribute) return;
+  if ((el.tagName || '').toUpperCase() !== 'INPUT') return;
+  if (!el.closest || !el.closest('.trv-editor')) return;
+  var pf = el.getAttribute('data-trv-purpose-field');
+  if (pf) { travelSyncPurposeProject(Number(el.getAttribute('data-i'))); return; }
+  var rf = el.getAttribute('data-trv-row-field');
+  if (rf === 'no' || rf === 'client') travelSyncRowProject(Number(el.getAttribute('data-i')));
+});
 document.addEventListener('input', function (e) {
   var el = e.target;
   if (!el || el.nodeType !== 1) return;
@@ -8107,6 +8296,10 @@ document.addEventListener('submit', function (e) {
   if (form.id === 'vendorForm') { e.preventDefault(); saveVendorForm(form); return; }
 });
 document.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target && e.target.nodeType === 1) {
+    /* 한글 IME 조합 중 Enter 는 조합 확정용이므로 건너뛴다 */
+    if (!e.isComposing && e.keyCode !== 229 && !e.repeat && trvEnterMove(e)) return;
+  }
   if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.getAttribute) {
     var act = e.target.getAttribute('data-action');
     if (act === 'month-detail') {
