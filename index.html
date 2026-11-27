@@ -1294,7 +1294,7 @@ function spawnNextRecurrence(t) {
   }
   var nt = normTask({
     title: t.title, type: t.type, status: 'progress',
-    due: nextDue, dueTime: isTimeHM(t.dueTime) ? t.dueTime : TASK_DEFAULT_DUE_TIME,
+    due: nextDue, dueTime: isTimeHM(t.dueTime) ? t.dueTime : '',
     siteId: t.siteId, projectId: t.projectId, note: t.note,
     recurrence: r, sourceTaskId: t.id
   });
