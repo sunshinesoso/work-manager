@@ -1190,7 +1190,8 @@ var ui = {
   travelFind: null,
   travelPeopleKind: 'staff',
   travelPeopleEditId: '',
-  travelPersonCustomId: ''
+  travelPersonCustomId: '',
+  travelPersonListId: ''
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
 
@@ -5252,10 +5253,17 @@ function trvKindFieldOptions(rep) {
 function trvPersonSelectOptions(rep) {
   var kind = travelPeopleKind(rep);
   var list = travelPeopleList(kind);
+  var cur = str(rep.person).trim();
   var pairs = [['', '명단에서 선택 (' + list.length + '명)']];
   list.forEach(function (p) { pairs.push([p.name, p.name + (str(p.rank).trim() ? ' · ' + p.rank : '')]); });
+  if (cur && !trvPersonCurrent(rep)) pairs.push([cur, cur + ' (명단에 없음)']);
   pairs.push(['__custom__', '직접 입력…']);
-  return options(pairs, trvPersonCurrent(rep));
+  return options(pairs, trvPersonSelectValue(rep));
+}
+function trvPersonSelectValue(rep) {
+  var cur = str(rep.person).trim();
+  if (!cur) return '';
+  return trvPersonCurrent(rep) || cur;
 }
 function trvPersonCurrent(rep) {
   var cur = str(rep.person).trim();
@@ -5266,8 +5274,10 @@ function trvPersonCurrent(rep) {
 /* 명단에 없는 이름을 쓰는 중이거나 목록에서 '직접 입력…'을 고른 상태 */
 function trvPersonManual(rep) {
   if (!rep) return false;
+  if (ui.travelPersonListId === rep.id) return false;   /* 사용자가 명단 보기를 골랐다 */
+  if (ui.travelPersonCustomId === rep.id) return true;
   var cur = str(rep.person).trim();
-  return ui.travelPersonCustomId === rep.id || (!!cur && !trvPersonCurrent(rep));
+  return !!cur && !trvPersonCurrent(rep);
 }
 function trvPersonField(rep) {
   var kind = travelPeopleKind(rep);
@@ -5907,9 +5917,10 @@ function trvPersonPick(value) {
   var rep = travelCur();
   if (!rep) return;
   if (value === '__custom__') { trvPersonManualOn(true); return; }
+  ui.travelPersonCustomId = '';
+  ui.travelPersonListId = '';
   if (!value) {
     rep.person = '';
-    ui.travelPersonCustomId = '';
     saveTravel(); render();
     trvFocusSelector('[data-trv="person"]');
     return;
@@ -5918,7 +5929,6 @@ function trvPersonPick(value) {
   rep.person = value;
   if (p && str(p.rank).trim()) rep.duty = p.rank;
   if (!str(rep.dept).trim()) rep.dept = '공사관리팀';
-  ui.travelPersonCustomId = '';
   saveTravel(); render();
   trvFocusSelector('[data-trv="person"]');
 }
@@ -5927,6 +5937,7 @@ function trvPersonManualOn(on) {
   var rep = travelCur();
   if (!rep) return;
   ui.travelPersonCustomId = on ? rep.id : '';
+  ui.travelPersonListId = on ? '' : rep.id;
   render();
   trvFocusSelector('[data-trv="person"]');
 }
@@ -5956,7 +5967,7 @@ function trvPersonPickRefresh() {
   var sel = document.querySelector('.trv-editor select[data-trv="person"]');
   if (sel) {
     sel.innerHTML = trvPersonSelectOptions(rep);
-    sel.value = trvPersonCurrent(rep);
+    sel.value = trvPersonSelectValue(rep);
   }
   trvSetInput('person', rep.person);
   trvSetInput('duty', rep.duty);
