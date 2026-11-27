@@ -784,6 +784,16 @@ ul{margin:0;padding:0;list-style:none}
 .vx-preview b{color:#0F1E36;font-weight:800;margin-left:3px}
 .vx-preview b.red{color:#DC2626}
 @media (max-width:640px){.vx-bar-right{margin-left:0;width:100%}.vx-bar .btn{flex:1 1 auto}}
+/* 데스크톱: 상태 칩 + 프로젝트 + 상호 + 검색을 한 줄에 나란히 */
+@media (min-width:1200px){
+  .vx-filters{display:flex;flex-wrap:nowrap;align-items:flex-end;gap:10px}
+  .vx-status{grid-column:auto;flex:0 0 auto}
+  .vx-chips{flex-wrap:nowrap;gap:6px}
+  .vx-chip{flex:0 0 auto;height:36px}
+  .vx-filters>label{flex:0 1 152px;min-width:0}
+  .vx-filters .vx-q{flex:1 1 180px;min-width:130px}
+  .vx-filters>label>select,.vx-filters>label>input{width:100%;min-width:0}
+}
 </style>
 </head>
 <body>
