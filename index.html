@@ -509,6 +509,20 @@ ul{margin:0;padding:0;list-style:none}
 .paid-badge{font-size:10.5px;font-weight:800;color:#15803D;background:#E6F7EE;border-radius:6px;padding:2px 6px;white-space:nowrap}
 .labor-note{font-size:11.5px;color:#94A3B8;line-height:1.6;margin-top:8px;padding:0 4px}
 
+/* ============ labor: 월별 대장 목록 ============ */
+.labor-ledger-table{min-width:820px}
+.labor-ledger-table tbody tr{cursor:pointer}
+.labor-ledger-table tbody tr:hover{background:#F7FAFF}
+.labor-ledger-month{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:800;color:#0F1E36;letter-spacing:-.2px;white-space:nowrap}
+.labor-ledger-chief{font-weight:700;color:#1E293B;white-space:nowrap}
+.labor-ledger-site{font-size:11.5px;font-weight:600;color:#94A3B8;margin-top:3px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.labor-ledger-sum{font-weight:800;color:#1D4ED8}
+.labor-edit-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.labor-edit-crumb{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#94A3B8;flex-wrap:wrap}
+.labor-edit-crumb b{font-size:13.5px;font-weight:800;color:#0F1E36;letter-spacing:-.2px}
+.labor-edit-crumb .sep{color:#CBD5E1}
+@media (max-width:640px){.labor-ledger-site{max-width:170px}}
+
 /* ============ labor: 기간·프로젝트별 조회 ============ */
 .labor-tabs{display:inline-flex;gap:4px;background:#EEF2F8;border:1px solid #E3E9F2;border-radius:12px;padding:4px;margin-bottom:16px}
 .labor-tab{appearance:none;-webkit-appearance:none;border:0;background:transparent;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:800;color:#64748B;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;transition:.15s}
@@ -1247,6 +1261,7 @@ var ui = {
   laborMonth: null,
   laborDayKey: null,
   laborTab: 'ledger',
+  laborEditing: false,
   laborFind: null,
   laborSel: {},
   travelId: null,
@@ -2597,6 +2612,7 @@ function go(view, opts) {
   ui.view = view;
   if (view === 'calendar' && !ui.calMonth) ui.calMonth = new Date();
   if (view === 'labor') {
+    ui.laborEditing = false;
     if (!ui.laborMonth) ui.laborMonth = currentMonthKey();
     if (!labor.months[ui.laborMonth]) labor.months[ui.laborMonth] = emptyLaborMonth(ui.laborMonth);
   }
@@ -3144,7 +3160,7 @@ var LABOR_MAX_DB = 100;
 function emptyLabor() { return { version: 1, workers: [], months: {} }; }
 function emptyLaborMonth(key) {
   key = key || currentMonthKey();
-  return { base: key + '-01', chief: '', companies: [], rows: [], logs: [], tax: true };
+  return { base: key + '-01', chief: '', companies: [], rows: [], logs: [], tax: true, created: '' };
 }
 function normLaborWorker(w) {
   w = w || {};
@@ -3211,6 +3227,7 @@ function normalizeLabor(p) {
     var m = months[k] || {};
     var nm = emptyLaborMonth(k);
     nm.tax = m.tax !== false;
+    nm.created = str(m.created).slice(0, 40);
     nm.chief = str(m.chief).trim().slice(0, 20);
     nm.companies = arr(m.companies).map(normLaborCompany).filter(function (c) { return c.abbr || c.name; });
     nm.rows = arr(m.rows).map(normLaborRow).filter(function (r) { return r.workerId; });
@@ -3295,10 +3312,10 @@ function laborSerial(iso) {
   var t = Date.UTC(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
   return Math.round((t - Date.UTC(1899, 11, 30)) / 86400000);
 }
-function laborRowCalc(m, row) {
+function laborRowCalc(m, row, key) {
   var w = laborWorker(row.workerId) || {};
   var rate = Math.max(0, Number(w.rate) || 0);
-  var dim = laborDaysInMonth(ui.laborMonth || currentMonthKey());
+  var dim = laborDaysInMonth(key || ui.laborMonth || currentMonthKey());
   var hours = 0, att = 0, early = 0, over = 0, per = {};
   for (var d = 1; d <= dim; d++) {
     var x = row.days[String(d)];
@@ -3322,11 +3339,11 @@ function laborRowCalc(m, row) {
     tax: tax, local: local, deduct: deduct, gross: gross, net: gross - deduct
   };
 }
-function laborTotals(m) {
+function laborTotals(m, key) {
   var t = { hours: 0, gross: 0, tax: 0, local: 0, deduct: 0, net: 0, workers: m.rows.length, per: {} };
   m.companies.forEach(function (c) { t.per[c.abbr] = { hours: 0, amount: 0 }; });
   m.rows.forEach(function (row) {
-    var rc = laborRowCalc(m, row);
+    var rc = laborRowCalc(m, row, key);
     t.hours += rc.hours; t.gross += rc.gross; t.tax += rc.tax; t.local += rc.local;
     t.deduct += rc.deduct; t.net += rc.net;
     Object.keys(rc.per).forEach(function (a) {
@@ -3426,8 +3443,79 @@ function laborTabs() {
     + icon('search', 15) + ' 프로젝트별 기간 조회</button>'
     + '</div>';
 }
+/* ---------------- 월별 대장 메인 목록 ---------------- */
+function laborMonthHasContent(m) {
+  return !!(m && (m.chief || (m.companies && m.companies.length) || (m.rows && m.rows.length) || (m.logs && m.logs.length)));
+}
+function laborMonthVisible(m) {
+  return !!m && (!!m.created || laborMonthHasContent(m));
+}
+/* 목록에 보이는 달: 자료가 있는 달 + '대장 작성'으로 연 달(비어 있어도 '작성 중'으로 표시) */
+function laborLedgerKeys() {
+  return Object.keys(labor.months).filter(function (k) { return laborMonthVisible(labor.months[k]); }).sort().reverse();
+}
+function laborListSiteText(m) {
+  if (!m.companies.length) return '';
+  var first = m.companies[0];
+  var nm = first.name || first.client || first.abbr || '';
+  if (!nm) return '';
+  return nm + (m.companies.length > 1 ? ' 외 ' + (m.companies.length - 1) + '건' : '');
+}
+function viewLaborList() {
+  var keys = laborLedgerKeys();
+  var sum = 0, compTotal = 0, workerTotal = 0;
+  var rows = keys.map(function (k) {
+    var m = labor.months[k];
+    var t = laborTotals(m, k);
+    sum += t.gross;
+    compTotal += m.companies.length;
+    workerTotal += m.rows.length;
+    var chief = laborChiefName(m);
+    var site = laborListSiteText(m);
+    return '<tr data-action="labor-open" data-month="' + esc(k) + '">'
+      + '<td><div class="labor-ledger-month">' + icon('calendar', 14) + esc(monthLabelFull(k))
+      + (laborMonthHasContent(m) ? '' : ' <span class="badge gray">작성 중</span>') + '</div>'
+      + (laborMonthHasContent(m) && m.logs.length && !m.companies.length && !m.rows.length ? '<div class="labor-ledger-site">작업일보 ' + m.logs.length + '건</div>' : '') + '</td>'
+      + '<td><div class="labor-ledger-chief">' + (chief ? esc(chief) : '<span class="muted">소장명 미입력</span>') + '</div>'
+      + '<div class="labor-ledger-site">' + (site ? esc(site) : '<span class="muted">공사 미등록</span>') + '</div></td>'
+      + '<td class="num">' + m.companies.length + '건</td>'
+      + '<td class="num">' + m.rows.length + '명</td>'
+      + '<td class="num labor-ledger-sum">' + won(t.gross) + '</td>'
+      + '<td><div class="actions">'
+      + '<button class="icon-sm" data-action="labor-dup" data-month="' + esc(k) + '" aria-label="복제" title="이 대장을 다른 달로 복제">' + icon('copy', 15) + '</button>'
+      + '<button class="icon-sm danger" data-action="labor-del-month" data-month="' + esc(k) + '" aria-label="삭제" title="이 달 대장 삭제">' + icon('trash', 15) + '</button>'
+      + '</div></td></tr>';
+  }).join('');
+  var head = '<div class="view-head"><div class="view-head-text">'
+    + '<p class="view-sub">' + (keys.length
+      ? '저장된 월별 대장 ' + keys.length + '개 · 공사 ' + compTotal + '건 · 투입 근로자 ' + workerTotal + '명 · 총 노무비 ' + won(sum)
+      : '월별로 공사·근로자·출근부를 기록하고 엑셀 양식으로 내보낼 수 있습니다.')
+    + '</p></div><div class="head-actions" style="margin-left:auto">'
+    + '<button class="btn btn-primary" data-action="labor-new">' + icon('plus', 16) + ' 노무비 대장 작성</button>'
+    + '</div></div>';
+  if (!keys.length) {
+    return head + '<div class="table-card"><div class="empty">'
+      + '<div class="empty-icon">' + icon('users', 24) + '</div>'
+      + '<div class="empty-title">저장된 노무비 대장이 없습니다</div>'
+      + '<div class="empty-desc">기준월을 골라 대장을 만들면 공사·근로자·출근부를 입력하고 엑셀 양식(노무비대장_소장명(A,B,C).xlsx)으로 내보낼 수 있습니다.</div>'
+      + '<div class="trv-empty-actions"><button class="btn btn-primary btn-sm" data-action="labor-new">' + icon('plus', 15) + ' 노무비 대장 작성</button></div>'
+      + '</div></div>';
+  }
+  return head + '<div class="table-card"><div class="table-scroll"><table class="labor-table labor-ledger-table">'
+    + '<thead><tr><th>기준월</th><th>소장명 / 현장</th><th class="num">공사 건수</th><th class="num">투입 근로자</th><th class="num">총 노무비 합계</th><th style="text-align:right">관리</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table></div></div>'
+    + '<div class="labor-note">행을 누르면 그 달의 노무비 대장 작성·편집 화면이 열립니다. 복제는 같은 내용으로 다른 달 대장을 만들 때, 삭제는 그 달 대장만 지웁니다(근로자 인적사항 DB는 유지).</div>';
+}
+function laborEditorNav(m) {
+  return '<div class="labor-edit-nav">'
+    + '<button class="btn btn-ghost btn-sm" data-action="labor-back">' + icon('chevron-left', 15) + ' 목록</button>'
+    + '<span class="labor-edit-crumb">월별 노무비 대장 <span class="sep">/</span> <b>' + esc(monthLabelFull(ui.laborMonth)) + '</b>'
+    + (laborChiefName(m) ? '<span class="badge blue">' + esc(laborChiefName(m)) + '</span>' : '') + '</span>'
+    + '</div>';
+}
 function viewLabor() {
   if (ui.laborTab === 'find') return laborTabs() + viewLaborFind();
+  if (!ui.laborEditing) return laborTabs() + viewLaborList();
   if (!ui.laborMonth) ui.laborMonth = currentMonthKey();
   var m = laborMonth();
   var t = laborTotals(m);
@@ -3458,7 +3546,7 @@ function viewLabor() {
     + '<div class="v" style="display:flex;align-items:center;gap:10px">' + (m.tax ? '적용 중' : '적용 안 함')
     + '<button class="btn btn-sm ' + (m.tax ? 'btn-ghost' : 'btn-primary') + '" data-action="labor-tax">' + (m.tax ? '끄기' : '켜기') + '</button></div></div>'
     + '</div>';
-  return laborTabs() + head + kpis
+  return laborTabs() + laborEditorNav(m) + head + kpis
     + (warns.length ? '<div class="labor-note" style="margin-bottom:10px">※ ' + esc(warns.join(' ')) + '</div>' : '')
     + laborCompanyCard(m, t) + laborWorkerCard(m) + laborAttendanceCard(m) + laborLogCard(m);
 }
@@ -4082,7 +4170,8 @@ function setLaborChief(value) {
   if (m.chief === v) return;
   m.chief = v;
   saveLabor();
-  render();
+  /* 입력 후 바로 옆 버튼(목록·내보내기)을 눌렀을 때 첫 클릭이 사라지지 않도록 렌더를 다음 차례로 미룬다 */
+  setTimeout(function () { render(); }, 0);
   toast(laborChiefName(m) ? '소장명을 "' + laborChiefName(m) + '"(으)로 저장했습니다.' : '소장명을 비웠습니다.');
 }
 function laborToggleTax() {
@@ -4115,6 +4204,136 @@ function laborLoadPrevMonth() {
       laborClearAll();
       render();
       toast('이전 달 공사·근로자를 불러왔습니다.');
+    }
+  });
+}
+/* ---------------- 대장 열기·작성·복제·삭제 ---------------- */
+function laborOpenLedger(key) {
+  if (!/^\d{4}-\d{2}$/.test(str(key))) return;
+  ui.laborMonth = key;
+  if (!labor.months[key]) labor.months[key] = emptyLaborMonth(key);
+  if (!labor.months[key].created) labor.months[key].created = nowStamp();
+  ui.laborEditing = true;
+  laborClearAll();
+  saveLabor();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+function laborBackToList() {
+  ui.laborEditing = false;
+  laborClearAll();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+}
+/* 새 대장 기본값: 이번 달에 대장이 없으면 이번 달, 있으면 가장 최근 대장 다음 빈 달 */
+function laborSuggestedNewMonth() {
+  var cur = currentMonthKey();
+  var keys = laborLedgerKeys();
+  if (keys.indexOf(cur) < 0) return cur;
+  var k = keys[0] > cur ? keys[0] : cur;
+  for (var i = 0; i < 36; i++) {
+    k = monthKeyAdd(k, 1);
+    if (!laborMonthVisible(labor.months[k])) return k;
+  }
+  return monthKeyAdd(cur, 1);
+}
+function laborLastChief() {
+  var keys = laborLedgerKeys();
+  for (var i = 0; i < keys.length; i++) {
+    if (labor.months[keys[i]].chief) return labor.months[keys[i]].chief;
+  }
+  return '';
+}
+function openLaborNewLedger() {
+  var body = '<form id="laborNewForm" class="modal-body" novalidate><div class="form-grid">'
+    + '<div class="f full"><label for="laborNewMonth">기준월 <span class="req">*</span></label>'
+    + '<input type="month" id="laborNewMonth" name="month" value="' + esc(laborSuggestedNewMonth()) + '"></div>'
+    + '<div class="f full"><label>소장명 <span class="opt">(선택)</span></label>'
+    + '<input type="text" name="chief" maxlength="20" value="' + esc(laborLastChief()) + '" placeholder="예) 박종필"></div>'
+    + '</div><div class="note">이미 있는 달을 고르면 그 대장을 이어서 편집합니다. 공사·근로자·출근부는 작성 화면에서 입력합니다.</div></form>';
+  openModal({ title: '노무비 대장 작성', body: body, foot: formFoot('대장 작성', 'laborNewForm') });
+}
+function saveLaborNewForm(form) {
+  var key = fv(form, 'month');
+  if (!/^\d{4}-\d{2}$/.test(key)) return fieldError(form, 'month', '기준월을 선택해 주세요.');
+  var chief = fv(form, 'chief').slice(0, 20);
+  var m = labor.months[key];
+  var existed = laborMonthHasContent(m);
+  if (!m) m = labor.months[key] = emptyLaborMonth(key);
+  if (!m.created) m.created = nowStamp();
+  if (chief && !m.chief) m.chief = chief;
+  ui.laborMonth = key;
+  ui.laborEditing = true;
+  laborClearAll();
+  saveLabor();
+  closeModal();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+  toast(existed ? monthLabelFull(key) + ' 대장을 열었습니다.' : monthLabelFull(key) + ' 노무비 대장을 만들었습니다.');
+}
+function openLaborDuplicate(key) {
+  var src = labor.months[key];
+  if (!src) return;
+  var target = key;
+  for (var i = 0; i < 36; i++) {
+    target = monthKeyAdd(target, 1);
+    if (!laborMonthVisible(labor.months[target])) break;
+  }
+  var body = '<form id="laborDupForm" class="modal-body" data-month="' + esc(key) + '" novalidate>'
+    + '<div class="note" style="margin:0 0 14px">' + esc(monthLabelFull(key)) + ' 대장의 공사 ' + src.companies.length + '건 · 근로자 ' + src.rows.length
+    + '명 · 출근 공수 · 작업일보 ' + src.logs.length + '건을 그대로 복사합니다.</div>'
+    + '<div class="form-grid"><div class="f full"><label for="laborDupMonth">복사할 기준월 <span class="req">*</span></label>'
+    + '<input type="month" id="laborDupMonth" name="month" value="' + esc(target) + '"></div></div>'
+    + '<div class="note">이미 대장이 있는 달은 덮어쓰지 않고 막습니다.</div></form>';
+  openModal({ title: '노무비 대장 복제', body: body, foot: formFoot('복제', 'laborDupForm') });
+}
+function saveLaborDupForm(form) {
+  var src = labor.months[form.getAttribute('data-month')];
+  if (!src) { closeModal(); render(); return; }
+  var key = fv(form, 'month');
+  if (!/^\d{4}-\d{2}$/.test(key)) return fieldError(form, 'month', '기준월을 선택해 주세요.');
+  if (laborMonthVisible(labor.months[key]) && labor.months[key] !== src) {
+    return fieldError(form, 'month', monthLabelFull(key) + ' 대장이 이미 있습니다. 다른 달을 골라 주세요.');
+  }
+  if (key === form.getAttribute('data-month')) return fieldError(form, 'month', '복사할 달을 원래 대장과 다르게 골라 주세요.');
+  var copy = emptyLaborMonth(key);
+  copy.created = nowStamp();
+  copy.chief = src.chief;
+  copy.tax = src.tax;
+  copy.companies = src.companies.map(function (c) {
+    return normLaborCompany({ id: uid('cmp'), no: c.no, client: c.client, abbr: c.abbr, name: c.name, memo: c.memo, projectId: c.projectId });
+  });
+  copy.rows = src.rows.map(function (r) {
+    return normLaborRow({ workerId: r.workerId, days: JSON.parse(JSON.stringify(r.days || {})), paid: r.paid });
+  });
+  copy.logs = src.logs.map(function (g) {
+    return normLaborLog({ id: uid('log'), date: g.date, projectNo: g.projectNo, client: g.client, name: g.name, work: g.work, done: g.done, projectId: g.projectId });
+  });
+  labor.months[key] = copy;
+  ui.laborMonth = key;
+  ui.laborEditing = true;
+  laborClearAll();
+  saveLabor();
+  closeModal();
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { }
+  toast(monthLabelFull(key) + ' 노무비 대장으로 복제했습니다.');
+}
+function deleteLaborMonth(key) {
+  var m = labor.months[key];
+  if (!m) return;
+  var label = monthLabelFull(key);
+  openConfirm({
+    title: '노무비 대장 삭제',
+    message: label + ' 노무비 대장을 삭제합니다.\n공사 ' + m.companies.length + '건 · 근로자 ' + m.rows.length + '명 · 작업일보 ' + m.logs.length + '건이 함께 지워지며 되돌릴 수 없습니다.\n근로자 인적사항 DB는 그대로 남습니다.',
+    confirmLabel: '삭제',
+    onConfirm: function () {
+      delete labor.months[key];
+      if (ui.laborMonth === key) { ui.laborMonth = null; ui.laborEditing = false; }
+      laborClearAll();
+      saveLabor();
+      render();
+      toast(label + ' 노무비 대장을 삭제했습니다.');
     }
   });
 }
@@ -8600,6 +8819,11 @@ document.addEventListener('click', function (e) {
     case 'bulk-complete': bulkComplete(el.getAttribute('data-bulk')); break;
     case 'bulk-delete': bulkDelete(el.getAttribute('data-bulk')); break;
     case 'labor-tab': setLaborTab(el.getAttribute('data-tab')); break;
+    case 'labor-new': openLaborNewLedger(); break;
+    case 'labor-open': laborOpenLedger(el.getAttribute('data-month')); break;
+    case 'labor-back': laborBackToList(); break;
+    case 'labor-dup': openLaborDuplicate(el.getAttribute('data-month')); break;
+    case 'labor-del-month': deleteLaborMonth(el.getAttribute('data-month')); break;
     case 'labor-find-preset': applyLaborFindPreset(el.getAttribute('data-preset')); break;
     case 'labor-find-csv-workers': exportLaborFindCSV('workers'); break;
     case 'labor-find-csv-logs': exportLaborFindCSV('logs'); break;
@@ -8827,6 +9051,8 @@ document.addEventListener('submit', function (e) {
   if (form.id === 'eventForm') { e.preventDefault(); saveEventForm(form); return; }
   if (form.id === 'laborWorkerForm') { e.preventDefault(); saveLaborWorkerForm(form); return; }
   if (form.id === 'laborCompanyForm') { e.preventDefault(); saveLaborCompanyForm(form); return; }
+  if (form.id === 'laborNewForm') { e.preventDefault(); saveLaborNewForm(form); return; }
+  if (form.id === 'laborDupForm') { e.preventDefault(); saveLaborDupForm(form); return; }
   if (form.id === 'laborDayForm') { e.preventDefault(); saveLaborDayForm(form); return; }
   if (form.id === 'laborLogForm') { e.preventDefault(); saveLaborLogForm(form); return; }
   if (form.id === 'vendorForm') { e.preventDefault(); saveVendorForm(form); return; }
