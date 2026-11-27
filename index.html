@@ -555,6 +555,18 @@ ul{margin:0;padding:0;list-style:none}
 .trv-detail-scroll thead th{position:sticky;top:0;z-index:3}
 .trv-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .trv-tools .muted{font-size:11.5px}
+.trv-pick-bar{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:#F7FAFF;border:1px solid #E3EBF8;border-radius:12px}
+.trv-pick-bar .trv-pick-field{flex:1 1 220px;min-width:190px;max-width:360px}
+.trv-pick-bar .trv-pick-note{font-size:11.5px;color:#94A3B8;font-weight:600;margin-left:auto;padding-bottom:9px}
+.trv-people-tabs{margin-bottom:14px}
+.trv-tab-count{display:inline-block;min-width:18px;padding:0 5px;margin-left:2px;border-radius:9px;background:#E8EEF9;color:#475569;font-size:11px;font-weight:800;line-height:18px;text-align:center}
+.labor-tab.on .trv-tab-count{background:#fff;color:#2563EB}
+.trv-people-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;gap:10px;align-items:end;margin-bottom:14px}
+.trv-people-scroll{max-height:340px;overflow:auto}
+.trv-people-table{min-width:0}
+.trv-people-table th:last-child,.trv-people-table td:last-child{width:96px;white-space:nowrap}
+.trv-people-note{margin:12px 0 0;font-size:11.5px;color:#94A3B8;font-weight:600;line-height:1.55}
+@media(max-width:640px){.trv-people-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.trv-people-form .btn{grid-column:span 2}.trv-pick-bar .trv-pick-note{margin-left:0;padding-bottom:0}}
 .trv-kpis{margin-bottom:14px}
 .trv-board{display:flex;flex-direction:column;gap:6px}
 .trv-bar-row{display:grid;grid-template-columns:120px minmax(90px,1fr) minmax(80px,2fr) 110px 56px;gap:10px;align-items:center;font-size:12.5px}
@@ -1155,7 +1167,9 @@ var ui = {
   travelId: null,
   travelTab: 'write',
   travelNewType: 'daily',
-  travelFind: null
+  travelFind: null,
+  travelPeopleKind: 'staff',
+  travelPeopleEditId: ''
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
 
@@ -4611,6 +4625,74 @@ function travMaxRows(rep) { return travIsStaff(rep) ? TRAVEL_STAFF_MAX_ROWS : TR
 function travSampleFor(type) { return type === TRAVEL_TYPE_STAFF ? TRAVEL_STAFF_SAMPLE : TRAVEL_SAMPLE; }
 function travelTypeLabel(rep) { return travIsStaff(rep) ? '상용직' : '일용직'; }
 
+/* ---- 출장자 명단(상용직·일용직): 정산서 성명 선택용 ---- */
+var TRAVEL_PEOPLE_KEY = 'construction_work_manager_travel_people_v1';
+/* 처음 열었을 때 들어 있는 기본 명단. 추가·수정·삭제하면 아래 키에 저장된다. */
+var TRAVEL_PEOPLE_DEFAULT = {
+  staff: [
+    ['여경태', '이사'], ['이병철', '이사'], ['김덕경', '부장'], ['배석주', '부장'],
+    ['윤주영', '차장'], ['이태완', '과장'], ['현나영', '주임'], ['조정현', '주임']
+  ],
+  daily: [['홍영익', '소장'], ['박종필', '소장'], ['오정열', '소장']]
+};
+function travelPersonKey(name) { return str(name).replace(/\s+/g, '').toLowerCase(); }
+function travelPeopleDefault() {
+  var out = { version: 1, staff: [], daily: [] };
+  ['staff', 'daily'].forEach(function (kind) {
+    TRAVEL_PEOPLE_DEFAULT[kind].forEach(function (pair, i) {
+      out[kind].push({ id: 'tp_' + kind + '_' + (i + 1), name: pair[0], rank: pair[1] });
+    });
+  });
+  return out;
+}
+function normTravelPerson(p) {
+  p = p || {};
+  return { id: safeId(p.id, 'tp'), name: str(p.name).trim().slice(0, 20), rank: str(p.rank).trim().slice(0, 20) };
+}
+function normTravelPeople(p) {
+  var d = travelPeopleDefault();
+  if (!p || typeof p !== 'object') return d;
+  var out = { version: 1, staff: [], daily: [] }, any = false;
+  ['staff', 'daily'].forEach(function (kind) {
+    if (!Array.isArray(p[kind])) { out[kind] = d[kind]; return; }
+    any = true;
+    var seen = {};
+    arr(p[kind]).forEach(function (x) {
+      var person = normTravelPerson(x);
+      if (!person.name) return;
+      var k = travelPersonKey(person.name);
+      if (seen[k]) return;
+      seen[k] = 1;
+      out[kind].push(person);
+    });
+  });
+  return any ? out : d;
+}
+function loadTravelPeople() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(TRAVEL_PEOPLE_KEY); } catch (e) { raw = null; }
+  if (!raw) return travelPeopleDefault();
+  var p = null;
+  try { p = JSON.parse(raw); } catch (e) { return travelPeopleDefault(); }
+  return normTravelPeople(p);
+}
+function saveTravelPeople() {
+  try { window.localStorage.setItem(TRAVEL_PEOPLE_KEY, JSON.stringify(travelPeople)); }
+  catch (e) { toast('출장자 명단을 저장하지 못했습니다. 저장 공간을 확인해 주세요.', 'alert'); }
+}
+var travelPeople = loadTravelPeople();
+function travelPeopleKind(rep) { return travIsStaff(rep) ? 'staff' : 'daily'; }
+function travelPeopleKindLabel(kind) { return kind === 'staff' ? '상용직' : '일용직'; }
+function travelPeopleList(kind) { return kind === 'staff' ? travelPeople.staff : travelPeople.daily; }
+function travelPersonById(kind, id) { return byId(travelPeopleList(kind), id); }
+function travelPersonByName(kind, name) {
+  var k = travelPersonKey(name);
+  if (!k) return null;
+  var list = travelPeopleList(kind);
+  for (var i = 0; i < list.length; i++) { if (travelPersonKey(list[i].name) === k) return list[i]; }
+  return null;
+}
+
 /* 첨부해 주신 홍영익 소장 10월 정산서(직영-영암)와 같은 데이터 */
 var TRAVEL_SAMPLE = {
   dept: '공사관리팀',
@@ -5145,6 +5227,29 @@ function travelEditorHead(rep, t) {
 function trvKindFieldOptions(rep) {
   return options([[TRAVEL_KIND_CARD, '법인카드 (법인카드사용)'], [TRAVEL_KIND_CASH, '현금 (현금사용)']], rep.kind);
 }
+/* ---- 출장자 선택 상자: 명단에서 고르면 성명·직책이 자동으로 채워진다 ---- */
+function trvPersonPickOptions(rep) {
+  var kind = travelPeopleKind(rep);
+  var list = travelPeopleList(kind);
+  var label = travelPeopleKindLabel(kind);
+  var cur = str(rep.person).trim();
+  var matched = travelPersonByName(kind, cur);
+  var pairs = [['', '출장자 선택 · ' + label + (list.length ? '' : ' (명단 비어 있음)')]];
+  list.forEach(function (p) { pairs.push([p.name, p.name + (str(p.rank).trim() ? ' · ' + p.rank : '')]); });
+  if (cur && !matched) pairs.push([cur, cur + ' (명단에 없음)']);
+  return options(pairs, matched ? matched.name : cur);
+}
+function trvPersonPickBar(rep) {
+  var kind = travelPeopleKind(rep);
+  var label = travelPeopleKindLabel(kind);
+  return '<div class="trv-pick-bar">'
+    + '<label class="trv-field trv-pick-field"><span>' + label + ' 출장자 선택</span>'
+    + '<select data-trv-person-pick aria-label="' + label + ' 출장자 선택">' + trvPersonPickOptions(rep) + '</select></label>'
+    + '<button type="button" class="btn btn-ghost btn-sm" data-action="travel-people" data-kind="' + kind + '">' + icon('users', 15) + ' 출장자 관리</button>'
+    + '<button type="button" class="btn btn-primary btn-sm" data-action="travel-person-add" data-kind="' + kind + '">' + icon('plus', 15) + ' 사람 추가</button>'
+    + '<span class="trv-pick-note" data-trv-pick-note>' + travelPeopleList(kind).length + '명 · 고르면 성명·직책이 채워집니다.</span>'
+    + '</div>';
+}
 /* ---- 일용직 정산서 편집 ---- */
 function travelDailyEditor(rep) {
   var t = trvTotals(rep);
@@ -5152,6 +5257,7 @@ function travelDailyEditor(rep) {
 
   var basic = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('user', 15) + ' 기본 정보</h3><span class="sub">엑셀 상단 칸에 그대로 들어갑니다.</span></div>'
+    + trvPersonPickBar(rep)
     + '<div class="trv-form">'
     + trvField('부서', 'dept', rep.dept, { placeholder: '공사관리팀' })
     + trvField('직책', 'duty', rep.duty, { placeholder: '소장' })
@@ -5239,6 +5345,7 @@ function travelStaffEditor(rep) {
 
   var basic = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('user', 15) + ' 기본 정보</h3><span class="sub">상용직 양식(이병철 이사 정산서)의 상단 칸에 그대로 들어갑니다.</span></div>'
+    + trvPersonPickBar(rep)
     + '<div class="trv-form">'
     + trvField('작성일', 'writtenAt', rep.writtenAt, { type: 'date' })
     + trvField('부서', 'dept', rep.dept, { placeholder: '공사관리팀' })
@@ -5762,6 +5869,46 @@ function travelSetField(name, value) {
   travelSaveSoon();
   travelRefreshDOM();
 }
+/* 명단에서 출장자를 고르면 성명·직책을 채우고, 비어 있는 부서는 기본값으로 둔다 */
+function travelApplyPerson(name) {
+  var rep = travelCur();
+  if (!rep) return;
+  var kind = travelPeopleKind(rep);
+  var p = travelPersonByName(kind, name);
+  if (!p) return;
+  rep.person = p.name;
+  if (str(p.rank).trim()) rep.duty = p.rank;
+  if (!str(rep.dept).trim()) rep.dept = '공사관리팀';
+  saveTravel();
+  render();
+  toast(p.name + (str(p.rank).trim() ? ' · ' + p.rank : '') + ' 출장자로 채웠습니다.');
+}
+function trvSetInput(name, value) {
+  var el = document.querySelector('.trv-editor [data-trv="' + name + '"]');
+  if (el && el.value !== str(value)) el.value = str(value);
+}
+/* 입력한 성명·직책을 화면과 선택 상자에 맞춘다(직접 타이핑도 그대로 가능) */
+function trvPersonPickRefresh() {
+  var rep = travelCur();
+  if (!rep) return;
+  var kind = travelPeopleKind(rep), cur = str(rep.person).trim();
+  var pick = document.querySelector('.trv-editor [data-trv-person-pick]');
+  if (pick) {
+    pick.innerHTML = trvPersonPickOptions(rep);
+    var matched = travelPersonByName(kind, cur);
+    var want = matched ? matched.name : cur;
+    var has = false;
+    for (var i = 0; i < pick.options.length; i++) { if (pick.options[i].value === want) { has = true; break; } }
+    pick.value = has ? want : '';
+  }
+  var note = document.querySelector('.trv-editor [data-trv-pick-note]');
+  if (note) note.textContent = travelPeopleList(kind).length + '명 · 고르면 성명·직책이 채워집니다.';
+  trvSetInput('person', rep.person);
+  trvSetInput('duty', rep.duty);
+  trvSetInput('dept', rep.dept);
+  var nm = document.querySelector('[data-trv-name]');
+  if (nm) nm.textContent = cur || '성명 미입력';
+}
 function travelSetRowField(i, field, value) {
   var rep = travelCur();
   if (!rep || !rep.rows[i]) return;
@@ -5882,6 +6029,138 @@ function travelDelRow(i) {
   render();
 }
 
+/* ---------------- 출장자 명단 관리(추가·수정·삭제·기본 복원) ---------------- */
+function travelPeopleModalInner() {
+  var kind = ui.travelPeopleKind === 'daily' ? 'daily' : 'staff';
+  var label = travelPeopleKindLabel(kind);
+  var list = travelPeopleList(kind);
+  var editing = ui.travelPeopleEditId ? travelPersonById(kind, ui.travelPeopleEditId) : null;
+  var tabs = ['staff', 'daily'].map(function (k) {
+    return '<button type="button" role="tab" aria-selected="' + (k === kind ? 'true' : 'false') + '"'
+      + ' class="labor-tab' + (k === kind ? ' on' : '') + '" data-action="travel-people-tab" data-kind="' + k + '">'
+      + travelPeopleKindLabel(k) + ' <span class="trv-tab-count">' + travelPeopleList(k).length + '</span></button>';
+  }).join('');
+  var rows = list.map(function (p) {
+    return '<tr' + (editing && editing.id === p.id ? ' class="on"' : '') + '>'
+      + '<td><div class="cell-title"><span class="txt">' + esc(p.name) + '</span></div></td>'
+      + '<td>' + (str(p.rank).trim() ? esc(p.rank) : '<span class="muted">직급 없음</span>') + '</td>'
+      + '<td><div class="actions" style="justify-content:flex-end">'
+      + '<button type="button" class="icon-sm" data-action="travel-person-edit" data-id="' + p.id + '" aria-label="수정" title="수정">' + icon('edit', 15) + '</button>'
+      + '<button type="button" class="icon-sm danger" data-action="travel-person-del" data-id="' + p.id + '" aria-label="삭제" title="삭제">' + icon('trash', 15) + '</button>'
+      + '</div></td></tr>';
+  }).join('');
+  return '<div class="labor-tabs trv-people-tabs" role="tablist" aria-label="출장자 구분">' + tabs + '</div>'
+    + '<div class="trv-people-form">'
+    + '<label class="trv-field"><span>' + label + ' 이름</span><input type="text" id="trvPersonName" maxlength="20" value="' + esc(editing ? editing.name : '') + '" placeholder="예: 김철수" aria-label="이름"></label>'
+    + '<label class="trv-field"><span>직급</span><input type="text" id="trvPersonRank" maxlength="20" value="' + esc(editing ? editing.rank : '') + '" placeholder="예: 대리" aria-label="직급"></label>'
+    + '<button type="button" class="btn btn-primary btn-sm" data-action="travel-person-save">' + (editing ? '수정 저장' : icon('plus', 15) + ' ' + label + ' 추가') + '</button>'
+    + (editing ? '<button type="button" class="btn btn-ghost btn-sm" data-action="travel-person-cancel">취소</button>' : '')
+    + '</div>'
+    + '<div class="table-scroll trv-people-scroll"><table class="table trv-people-table"><thead><tr>'
+    + '<th style="min-width:110px">이름</th><th style="min-width:90px">직급</th><th style="text-align:right">관리</th></tr></thead><tbody>'
+    + (rows || '<tr><td colspan="3"><div class="trv-board-empty">' + label + ' 명단이 비어 있습니다. 위에서 이름과 직급을 넣어 추가해 주세요.</div></td></tr>')
+    + '</tbody></table></div>'
+    + '<p class="trv-people-note">여기서 추가·수정·삭제한 명단은 정산서의 출장자 선택 목록에 바로 반영되고 이 브라우저에 저장됩니다. JSON 백업에도 함께 담기며, 일용직 정산서에는 일용직 명단만 나옵니다.</p>';
+}
+function travelPeopleModalBody() {
+  return '<div class="modal-body" id="trvPeopleBody">' + travelPeopleModalInner() + '</div>';
+}
+function travelPeopleModalRefresh() {
+  var body = document.getElementById('trvPeopleBody');
+  if (body) body.innerHTML = travelPeopleModalInner();
+  trvPersonPickRefresh();
+}
+function openTravelPeople(kind, adding) {
+  ui.travelPeopleKind = kind === 'daily' ? 'daily' : 'staff';
+  ui.travelPeopleEditId = '';
+  openModal({
+    title: '출장자 명단 관리',
+    body: travelPeopleModalBody(),
+    foot: '<button class="btn btn-ghost" data-action="travel-people-reset">' + icon('refresh', 15) + ' 기본 명단 복원</button>'
+      + '<button class="btn btn-primary" data-action="close-modal">닫기</button>',
+    wide: true
+  });
+  if (adding) {
+    setTimeout(function () {
+      var el = document.getElementById('trvPersonName');
+      if (el) { try { el.focus(); } catch (e) { } }
+    }, 60);
+  }
+}
+function travelPeopleTab(kind) {
+  ui.travelPeopleKind = kind === 'daily' ? 'daily' : 'staff';
+  ui.travelPeopleEditId = '';
+  travelPeopleModalRefresh();
+}
+function travelPersonEdit(id) {
+  if (!travelPersonById(ui.travelPeopleKind, id)) return;
+  ui.travelPeopleEditId = id;
+  travelPeopleModalRefresh();
+  setTimeout(function () {
+    var el = document.getElementById('trvPersonName');
+    if (el) { try { el.focus(); el.select(); } catch (e) { } }
+  }, 30);
+}
+function travelPersonSave() {
+  var kind = ui.travelPeopleKind === 'daily' ? 'daily' : 'staff';
+  var nameEl = document.getElementById('trvPersonName');
+  var rankEl = document.getElementById('trvPersonRank');
+  var name = nameEl ? str(nameEl.value).replace(/\s+/g, ' ').trim().slice(0, 20) : '';
+  var rank = rankEl ? str(rankEl.value).replace(/\s+/g, ' ').trim().slice(0, 20) : '';
+  var focusName = function () { if (nameEl) { try { nameEl.focus(); nameEl.select(); } catch (e) { } } };
+  if (!name) { toast('출장자 이름을 입력해 주세요.', 'alert'); focusName(); return; }
+  var editing = ui.travelPeopleEditId ? travelPersonById(kind, ui.travelPeopleEditId) : null;
+  var dup = travelPersonByName(kind, name);
+  if (dup && (!editing || dup.id !== editing.id)) {
+    toast('이미 ' + travelPeopleKindLabel(kind) + ' 명단에 있는 이름입니다.', 'alert');
+    focusName();
+    return;
+  }
+  if (editing) { editing.name = name; editing.rank = rank; }
+  else travelPeopleList(kind).push({ id: uid('tp'), name: name, rank: rank });
+  ui.travelPeopleEditId = '';
+  saveTravelPeople();
+  travelPeopleModalRefresh();
+  toast(editing
+    ? (name + ' 출장자 정보를 고쳤습니다.')
+    : (travelPeopleKindLabel(kind) + ' 명단에 ' + name + (rank ? ' ' + rank : '') + ' 님을 추가했습니다.'));
+}
+function travelPersonDelete(id) {
+  var kind = ui.travelPeopleKind === 'daily' ? 'daily' : 'staff';
+  var p = travelPersonById(kind, id);
+  if (!p) return;
+  openConfirm({
+    title: '출장자 삭제',
+    message: travelPeopleKindLabel(kind) + ' 명단에서 ' + p.name + (str(p.rank).trim() ? ' ' + p.rank : '') + ' 님을 지웁니다.\n이미 만든 정산서에 적힌 성명·직책은 그대로 남습니다.',
+    confirmLabel: '삭제', danger: true,
+    onConfirm: function () {
+      var list = travelPeopleList(kind).filter(function (x) { return x.id !== id; });
+      travelPeople[kind] = list;
+      if (ui.travelPeopleEditId === id) ui.travelPeopleEditId = '';
+      saveTravelPeople();
+      openTravelPeople(kind);
+      trvPersonPickRefresh();
+      toast(p.name + ' 님을 명단에서 지웠습니다.');
+    }
+  });
+}
+function travelPeopleReset() {
+  var kind = ui.travelPeopleKind === 'daily' ? 'daily' : 'staff';
+  openConfirm({
+    title: '기본 명단 복원',
+    message: '상용직 8명 · 일용직 3명 기본 명단으로 되돌립니다.\n직접 추가·수정·삭제한 명단 내용은 사라집니다. 계속할까요?',
+    confirmLabel: '복원', danger: false,
+    onConfirm: function () {
+      travelPeople = travelPeopleDefault();
+      saveTravelPeople();
+      ui.travelPeopleEditId = '';
+      openTravelPeople(kind);
+      trvPersonPickRefresh();
+      toast('출장자 기본 명단으로 복원했습니다.');
+    }
+  });
+}
+
 /* ---------------- 엔터키로 다음 칸 이동 (엑셀처럼) ---------------- */
 /* 편집 카드 안의 입력칸을 화면 순서대로 모은다 */
 function trvFieldSelector(el) {
@@ -5892,6 +6171,7 @@ function trvFieldSelector(el) {
     return v === null || v === undefined || v === '' ? null : v;
   };
   if (key('data-trv')) return '[data-trv="' + key('data-trv') + '"]';
+  if (el.getAttribute('data-trv-person-pick') !== null) return '[data-trv-person-pick]';
   if (key('data-trv-purpose-pick')) return '[data-trv-purpose-pick="' + key('data-trv-purpose-pick') + '"]';
   if (key('data-trv-purpose-field')) return '[data-trv-purpose-field="' + key('data-trv-purpose-field') + '"][data-i="' + i + '"]';
   if (key('data-trv-row-pick')) return '[data-trv-row-pick="' + key('data-trv-row-pick') + '"]';
@@ -7884,6 +8164,7 @@ function exportJSON() {
     tasks: db.tasks, projects: db.projects, sites: db.sites, docs: db.docs, events: db.events,
     labor: labor,
     travel: travel,
+    travelPeople: travelPeople,
     vendorPayments: vendor.items
   };
   downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), '건설업_업무관리_백업_' + stamp() + '.json');
@@ -7897,6 +8178,7 @@ function importJSON(file) {
     if (!parsed || typeof parsed !== 'object') { toast('불러올 수 없는 파일입니다.', 'alert'); return; }
     var hasData = ['tasks', 'projects', 'sites', 'docs', 'events'].some(function (k) { return Array.isArray(parsed[k]); })
       || !!(parsed.travel && Array.isArray(parsed.travel.reports))
+      || !!(parsed.travelPeople && (Array.isArray(parsed.travelPeople.staff) || Array.isArray(parsed.travelPeople.daily)))
       || Array.isArray(parsed.vendorPayments);
     if (!hasData) { toast('업무관리 백업 파일이 아닙니다.', 'alert'); return; }
     var count = ['tasks', 'projects', 'sites', 'docs', 'events'].reduce(function (a, k) { return a + arr(parsed[k]).length; }, 0);
@@ -7909,6 +8191,7 @@ function importJSON(file) {
         db = normalizeDB(parsed);
         if (parsed.labor) labor = normalizeLabor(parsed.labor);
         if (parsed.travel) travel = normalizeTravel(parsed.travel);
+        if (parsed.travelPeople) { travelPeople = normTravelPeople(parsed.travelPeople); saveTravelPeople(); }
         if (Array.isArray(parsed.vendorPayments)) vendor.items = normalizeVendorItems(parsed.vendorPayments);
         saveVendor();
         saveTravel();
@@ -7940,6 +8223,8 @@ function resetAll() {
       try { window.localStorage.removeItem(LABOR_KEY); } catch (e) { }
       travel = emptyTravel();
       try { window.localStorage.removeItem(TRAVEL_KEY); } catch (e) { }
+      travelPeople = travelPeopleDefault();
+      try { window.localStorage.removeItem(TRAVEL_PEOPLE_KEY); } catch (e) { }
       ui.travelId = null;
       vendor = emptyVendor();
       try { window.localStorage.removeItem(VENDOR_KEY); } catch (e) { }
@@ -8133,6 +8418,14 @@ document.addEventListener('click', function (e) {
     case 'travel-add-row': travelAddRow(false); break;
     case 'travel-next-row': travelAddRow(true); break;
     case 'travel-del-row': travelDelRow(Number(el.getAttribute('data-i'))); break;
+    case 'travel-people': openTravelPeople(el.getAttribute('data-kind')); break;
+    case 'travel-person-add': openTravelPeople(el.getAttribute('data-kind'), true); break;
+    case 'travel-people-tab': travelPeopleTab(el.getAttribute('data-kind')); break;
+    case 'travel-person-edit': travelPersonEdit(id); break;
+    case 'travel-person-save': travelPersonSave(); break;
+    case 'travel-person-cancel': ui.travelPeopleEditId = ''; travelPeopleModalRefresh(); break;
+    case 'travel-person-del': travelPersonDelete(id); break;
+    case 'travel-people-reset': travelPeopleReset(); break;
     case 'export-json': exportJSON(); break;
     case 'import-json': {
       var fi = document.getElementById('importFile');
@@ -8189,6 +8482,7 @@ document.addEventListener('change', function (e) {
     ui.travelNewType = el.value === TRAVEL_TYPE_STAFF ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
     return;
   }
+  if (el.getAttribute && el.getAttribute('data-trv-person-pick') !== null) { travelApplyPerson(el.value); return; }
   var pick = el.getAttribute ? el.getAttribute('data-trv-purpose-pick') : null;
   if (pick !== null && pick !== undefined && pick !== '') { travelPickPurpose(Number(pick), el.value); return; }
   var rowPickPrj = el.getAttribute ? el.getAttribute('data-trv-row-pick') : null;
@@ -8219,6 +8513,13 @@ document.addEventListener('focusout', function (e) {
   if (!el || el.nodeType !== 1 || !el.getAttribute) return;
   if ((el.tagName || '').toUpperCase() !== 'INPUT') return;
   if (!el.closest || !el.closest('.trv-editor')) return;
+  if (el.getAttribute('data-trv') === 'person') {
+    /* 바로 옆 출장자 선택 상자로 넘어가는 중이면 상자 목록을 건드리지 않는다 */
+    var act = document.activeElement;
+    if (act && act.getAttribute && act.getAttribute('data-trv-person-pick') !== null) return;
+    trvPersonPickRefresh();
+    return;
+  }
   var pf = el.getAttribute('data-trv-purpose-field');
   if (pf) { travelSyncPurposeProject(Number(el.getAttribute('data-i'))); return; }
   var rf = el.getAttribute('data-trv-row-field');
@@ -8297,6 +8598,12 @@ document.addEventListener('submit', function (e) {
 });
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Enter' && e.target && e.target.nodeType === 1) {
+    /* 출장자 명단 관리 창에서는 Enter 로 바로 추가·수정 저장 */
+    if ((e.target.id === 'trvPersonName' || e.target.id === 'trvPersonRank') && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      travelPersonSave();
+      return;
+    }
     /* 한글 IME 조합 중 Enter 는 조합 확정용이므로 건너뛴다 */
     if (!e.isComposing && e.keyCode !== 229 && !e.repeat && trvEnterMove(e)) return;
   }
@@ -8324,6 +8631,9 @@ window.addEventListener('storage', function (e) {
     render();
   } else if (e && e.key === TRAVEL_KEY) {
     travel = loadTravel();
+    render();
+  } else if (e && e.key === TRAVEL_PEOPLE_KEY) {
+    travelPeople = loadTravelPeople();
     render();
   } else if (e && e.key === VENDOR_KEY) {
     vendor = loadVendor();
