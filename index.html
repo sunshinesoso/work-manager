@@ -787,6 +787,34 @@ ul{margin:0;padding:0;list-style:none}
 .vx-table th,.vx-table td{padding:8px 8px}
 .vx-table tbody tr{cursor:pointer}
 .vx-table .vx-name{white-space:normal;min-width:104px}
+/* ---- 업체 결제 현황 표: 핵심 열만 남기고 넉넉하게 (확정 시안) ---- */
+.vx-table-clean{min-width:940px}
+.vx-table-clean th{padding:12px 16px;font-size:11.5px;letter-spacing:.2px;color:#64748B;background:#FBFCFE;border-bottom:1px solid #E9EEF5;white-space:nowrap}
+.vx-table-clean td{padding:15px 16px;font-size:13.5px;border-top:1px solid #F1F5F9;vertical-align:middle;font-variant-numeric:tabular-nums;line-height:1.45}
+.vx-table-clean tbody tr{transition:background .12s}
+.vx-table-clean tbody tr:hover{background:#F8FAFF}
+.vx-table-clean tbody tr:focus-within{background:#F8FAFF}
+.vx-table-clean .num{text-align:right;white-space:nowrap}
+.vx-table-clean .actions .icon-sm{width:30px;height:30px;border-radius:8px}
+.vx-proj b{display:block;font-size:13.5px;font-weight:800;color:#0F1E36;line-height:1.4;white-space:normal;min-width:160px}
+.vx-proj span{display:block;font-size:11.5px;color:#94A3B8;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums}
+.vx-vendor{font-weight:700;color:#334155;white-space:nowrap}
+.vx-money{font-weight:800;color:#1E293B}
+.vx-money.due{color:#DC2626}
+.vx-money.clear{color:#0F766E}
+.vx-cell-sub{font-size:11px;color:#94A3B8;font-weight:600;margin-top:4px;line-height:1.4}
+.vx-rate-cell{min-width:140px;padding-right:22px}
+.vx-progress{position:relative;height:7px;border-radius:99px;background:#EDF1F7;overflow:hidden;min-width:92px}
+.vx-progress>span{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:linear-gradient(90deg,#60A5FA,#2563EB)}
+.vx-progress.paid>span{background:linear-gradient(90deg,#34D399,#16A34A)}
+.vx-rate-num{font-size:12px;font-weight:800;color:#334155;margin-top:5px;font-variant-numeric:tabular-nums}
+.vx-foot-rate{font-weight:800;color:#0F1E36;white-space:nowrap}
+@media (max-width:640px){
+  .vx-table-clean{min-width:780px}
+  .vx-table-clean th,.vx-table-clean td{padding:12px 12px}
+  .vx-proj b{min-width:120px;font-size:13px}
+  .vx-rate-cell{min-width:110px;padding-right:14px}
+}
 .vx-table .num.vx-due{color:#DC2626;font-weight:800}
 .vx-table tfoot td{background:#F8FAFC;font-weight:800;border-top:1px solid #E2E8F0;white-space:nowrap;font-size:12px}
 .vx-sort-th{white-space:nowrap}
@@ -8373,21 +8401,25 @@ function vendorTable(list) {
     var st = vendorStatus(x);
     var meta = VENDOR_STATUS[st];
     var dates = [x.date1, x.date2, x.date3].map(vxDateLine).filter(function (s) { return s; }).join(' / ');
+    var barW = Math.max(0, Math.min(100, Number(c.rate) || 0));
+    var rateTxt = vxRate(c.rate);
+    var billSub = c.T ? '청구 ' + vxWonNum(c.T) + ' · 청구후잔액 ' + vxWonNum(c.V) : '';
     return '<tr data-action="vendor-edit" data-id="' + x.id + '">'
-      + '<td class="nowrap"><b>' + esc(str(x.code) || '-') + '</b></td>'
-      + '<td class="vx-name">' + (vxMulti(x.name) || '<span class="muted">-</span>') + '</td>'
-      + '<td class="nowrap">' + (esc(x.vendor) || '<span class="muted">-</span>') + '</td>'
-      + '<td class="num">' + vxWonNum(c.D) + '</td>'
-      + '<td class="num">' + vxWonNum(c.Q)
-      + (dates ? '<div class="vx-sub">지급일 ' + esc(dates) + '</div>' : '')
-      + '</td>'
-      + '<td class="num">' + vxRate(c.rate) + '</td>'
-      + '<td class="num' + (c.S > 0.5 ? ' vx-due' : '') + '">' + vxWonNum(c.S) + '</td>'
-      + '<td class="num">' + (c.T ? vxWonNum(c.T) : '-') + '</td>'
-      + '<td class="num">' + vxWonNum(c.V) + '</td>'
-      + '<td class="nowrap">' + (esc(x.submit) || '-') + '</td>'
+      + '<td class="vx-proj">'
+      + '<b>' + (vxMulti(x.name) || '<span class="muted">이름 없음</span>') + '</b>'
+      + (str(x.code) ? '<span>' + esc(str(x.code)) + '</span>' : '') + '</td>'
+      + '<td class="vx-vendor">' + (esc(x.vendor) || '<span class="muted">-</span>')
+      + (str(x.submit) ? '<div class="vx-cell-sub">상신일 ' + esc(str(x.submit)) + '</div>' : '') + '</td>'
       + '<td><span class="badge ' + meta.cls + '">' + meta.label + '</span></td>'
-      + '<td><div class="actions">'
+      + '<td class="num vx-money">' + vxWonNum(c.D) + '</td>'
+      + '<td class="num vx-money">' + vxWonNum(c.Q)
+      + (dates ? '<div class="vx-cell-sub" style="text-align:right">지급일 ' + esc(dates) + '</div>' : '') + '</td>'
+      + '<td class="num vx-money ' + (c.S > 0.5 ? 'due' : 'clear') + '">' + vxWonNum(c.S)
+      + (billSub ? '<div class="vx-cell-sub" style="text-align:right">' + esc(billSub) + '</div>' : '') + '</td>'
+      + '<td class="vx-rate-cell">'
+      + '<div class="vx-progress' + (st === 'paid' ? ' paid' : '') + '" role="img" aria-label="지급율 ' + rateTxt + '"><span style="width:' + barW + '%"></span></div>'
+      + '<div class="vx-rate-num">' + rateTxt + '</div></td>'
+      + '<td class="actions-cell"><div class="actions">'
       + '<button class="icon-sm" type="button" data-action="vendor-edit" data-id="' + x.id + '" aria-label="수정">' + icon('edit', 15) + '</button>'
       + '<button class="icon-sm" type="button" data-action="vendor-dup" data-id="' + x.id + '" aria-label="복제">' + icon('copy', 15) + '</button>'
       + '<button class="icon-sm danger" type="button" data-action="vendor-del" data-id="' + x.id + '" aria-label="삭제">' + icon('trash', 15) + '</button>'
@@ -8400,27 +8432,23 @@ function vendorTable(list) {
     : sortMode === 'rate-desc'
       ? '지급율 내림차순 정렬됨. 다시 누르면 기본 순서'
       : '지급율 정렬 안 됨. 누르면 오름차순';
-  var sortTh = '<th class="num vx-sort-th" aria-sort="'
+  var sortTh = '<th class="vx-sort-th" aria-sort="'
     + (sortMode === 'rate-asc' ? 'ascending' : sortMode === 'rate-desc' ? 'descending' : 'none') + '">'
     + '<button type="button" class="vx-sort' + (sortMode ? ' on' : '') + '" data-action="vendor-sort-rate"'
     + ' title="' + esc(sortAria) + '" aria-label="' + esc(sortAria) + '">지급율<span class="ic" aria-hidden="true">' + sortIc + '</span></button></th>';
-  return '<div class="table-scroll"><table class="labor-table vx-table">'
+  return '<div class="table-scroll"><table class="labor-table vx-table vx-table-clean">'
     + '<thead><tr>'
-    + '<th>프로젝트</th><th>공사명</th><th>상호</th>'
-    + '<th class="num">총계약금(원)</th><th class="num">지급금액(원)</th>' + sortTh
-    + '<th class="num">잔액(원)</th><th class="num">청구건(원)</th><th class="num">청구후잔액(원)</th>'
-    + '<th>상신일</th><th>상태</th><th style="text-align:right">관리</th>'
+    + '<th>프로젝트 / 공정</th><th>상호(업체)</th><th>상태</th>'
+    + '<th class="num">계약금액</th><th class="num">기지급액</th><th class="num">미지급 잔액</th>' + sortTh
+    + '<th style="text-align:right">관리</th>'
     + '</tr></thead><tbody>' + body + '</tbody>'
     + '<tfoot><tr>'
     + '<td colspan="3">합계 · ' + t.count + '건</td>'
     + '<td class="num">' + vxWonNum(t.D) + '</td>'
     + '<td class="num">' + vxWonNum(t.Q) + '</td>'
-    + '<td class="num">' + vxRate(t.rate) + '</td>'
-    + '<td class="num">' + vxWonNum(t.S) + '</td>'
-    + '<td class="num">' + (t.T ? vxWonNum(t.T) : '-') + '</td>'
-    + '<td class="num">' + vxWonNum(t.V) + '</td>'
-    + '<td colspan="3"></td>'
-    + '</tr></tfoot></table></div>';
+    + '<td class="num' + (t.S > 0.5 ? ' vx-due' : '') + '">' + vxWonNum(t.S) + '</td>'
+    + '<td class="vx-rate-cell vx-foot-rate">' + vxRate(t.rate) + '</td>'
+    + '<td></td></tr></tfoot></table></div>';
 }
 function viewVendor() {
   var f = vendorFilterState();
