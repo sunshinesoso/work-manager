@@ -579,9 +579,9 @@ ul{margin:0;padding:0;list-style:none}
 .trv-type-pick select:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .trv-prj{display:flex;gap:4px;align-items:center;min-width:0}
 .trv-prj select{flex:1 1 130px;min-width:0}
-.trv-prj input{flex:0 0 100px;min-width:0;font-size:11.5px}
+.trv-prj input{flex:0 0 112px;min-width:0;font-size:11px}
 .trv-prj input:last-of-type{flex:1 1 80px;font-size:12px}
-.trv-prj input[data-trv-row-field="no"]{max-width:100px;text-align:center}
+.trv-prj input[data-trv-row-field="no"]{max-width:112px;text-align:center;letter-spacing:-.2px}
 .trv-staff-detail{min-width:1080px}
 .dash-row3 .done-where{max-width:120px}
 
@@ -4557,10 +4557,10 @@ var TRAVEL_STAFF_TPL_SHEET = '1030 (2)';
 var TRAVEL_STAFF_ATTACH_DEFAULT = '숙박비영수증, 식대영수증, 유류대영수증, 통신비사용영수증, 접대비 및 법인카드 지출증빙';
 /* 상용직 양식에는 자재비 열이 없고 기타경비가 M열 */
 var TRAVEL_STAFF_AMOUNTS = [
-  { key: 'fuel', label: '유류/통행료', short: '유류', col: 'D', w: 102 },
-  { key: 'stay', label: '숙박대', short: '숙박', col: 'G', w: 102 },
-  { key: 'meal', label: '식대', short: '식대', col: 'J', w: 146 },
-  { key: 'etc', label: '기타경비', short: '기타', col: 'M', w: 102 }
+  { key: 'fuel', label: '유류/통행료', short: '유류', col: 'D', w: 96 },
+  { key: 'stay', label: '숙박대', short: '숙박', col: 'G', w: 96 },
+  { key: 'meal', label: '식대', short: '식대', col: 'J', w: 136 },
+  { key: 'etc', label: '기타경비', short: '기타', col: 'M', w: 96 }
 ];
 function travIsStaff(rep) { return !!rep && rep.type === TRAVEL_TYPE_STAFF; }
 function travAmounts(rep) { return travIsStaff(rep) ? TRAVEL_STAFF_AMOUNTS : TRAVEL_AMOUNTS; }
@@ -5216,9 +5216,9 @@ function travelStaffEditor(rep) {
     + '<div class="trv-sec-head"><h3>' + icon('clipboard', 15) + ' 일자별 정산 내역</h3>'
     + '<span class="sub">날짜를 고르면 아래 행이 하루씩 이어서 자동으로 채워집니다. 식대 등은 30000+40000 처럼 더하기로 적으면 합계가 계산되고 엑셀에도 수식으로 들어갑니다.</span></div>'
     + '<div class="table-scroll trv-detail-scroll"><table class="table trv-table trv-detail trv-staff-detail"><thead><tr>'
-    + '<th style="min-width:128px">월/일</th>'
+    + '<th style="min-width:120px">월/일</th>'
     + amounts.map(function (f) { return '<th class="num" style="min-width:' + (f.w || 120) + 'px">' + f.label + '</th>'; }).join('')
-    + '<th class="num" style="min-width:88px">합계</th><th style="min-width:280px">프로젝트</th><th style="min-width:124px">비고</th><th></th></tr></thead><tbody>'
+    + '<th class="num" style="min-width:84px">합계</th><th style="min-width:360px">프로젝트</th><th style="min-width:120px">비고</th><th></th></tr></thead><tbody>'
     + rep.rows.map(function (r, i) {
       var sum = trvRowSum(r, rep);
       return '<tr data-trv-row="' + i + '">'
