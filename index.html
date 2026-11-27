@@ -269,6 +269,29 @@ ul{margin:0;padding:0;list-style:none}
 .mini-select.doc-writing{background:#F1F4F9;border-color:#E5EAF2;color:#64748B}
 .mini-select.doc-fix{background:#FDECEC;border-color:#F7D2D2;color:#DC2626}
 
+/* ============ view mode toggle (목록형/카드형) ============ */
+.view-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.view-toggle{display:inline-flex;align-items:center;gap:2px;background:#F1F5FB;border:1px solid #E4EBF5;border-radius:11px;padding:3px}
+.view-toggle button{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#64748B;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap;transition:.15s}
+.view-toggle button:hover{color:#1D4ED8}
+.view-toggle button[aria-pressed="true"]{background:#fff;color:#1D4ED8;box-shadow:0 1px 3px rgba(15,30,54,.14)}
+.view-toggle button:focus-visible{outline:2px solid #9CBDF7;outline-offset:1px}
+/* ============ projects table ============ */
+.table.projects{min-width:960px}
+.table th.sortable{cursor:pointer;user-select:none;-webkit-user-select:none}
+.table th.sortable:hover{color:#1D4ED8}
+.table th .sort-ind{display:inline-flex;vertical-align:-2px;margin-left:4px;color:#B6C2D4}
+.table th.on,.table th.on.sortable:hover{color:#1D4ED8}
+.table th.on .sort-ind{color:#2563EB}
+.table td.date-cell{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600;color:#475569}
+.cell-pair{display:flex;flex-direction:column;gap:2px;min-width:132px}
+.cell-pair .client{font-weight:700;color:#1E293B;line-height:1.32}
+.cell-pair .site{font-size:11.5px;color:#94A3B8;font-weight:600;line-height:1.32}
+.count-chip{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding:3px 8px;border-radius:8px;background:#EEF4FE;color:#1D4ED8;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+.count-chip.zero{background:#F4F7FC;color:#94A3B8}
+.btn-xs{height:28px;padding:0 9px;border-radius:8px;font-size:11.5px;font-weight:800;gap:4px}
+.date-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;grid-column:1 / -1}
+
 /* ============ entity cards ============ */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px}
 .entity{background:#fff;border:1px solid #E9EEF5;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:13px;box-shadow:0 1px 2px rgba(15,30,54,.04)}
@@ -713,6 +736,9 @@ ul{margin:0;padding:0;list-style:none}
   .chip{font-size:10px;padding:2px 4px}
   .cal-date{width:20px;height:20px;font-size:11px}
   .toolbar .search-box{max-width:none}
+  .view-head-actions{gap:6px}
+  .view-toggle button{padding:0 9px;font-size:12px}
+  .date-grid{grid-template-columns:1fr}
   .toast{max-width:calc(100vw - 32px)}
   #toastRoot{right:16px;left:16px;align-items:stretch}
 }
@@ -946,6 +972,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 'use strict';
 
 var STORE_KEY = 'construction_work_manager_v1';
+/* 프로젝트 관리 화면의 보기 방식(목록형/카드형)·정렬은 업무 데이터와 별도로 이 브라우저에 기억한다 */
+var PROJECT_VIEW_KEY = 'construction_projects_view_v1';
 var SCHEMA_VERSION = 1;
 var WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -1153,6 +1181,9 @@ var ICONS = {
   'chevron-right': '<path d="M9.5 5.5 16 12l-6.5 6.5"/>',
   'chevron-left': '<path d="M14.5 5.5 8 12l6.5 6.5"/>',
   'chevron-down': '<path d="M5.5 9.5 12 16l6.5-6.5"/>',
+  'chevron-up': '<path d="M5.5 14.5 12 8l6.5 6.5"/>',
+  'list-view': '<path d="M4 6.5h2.2M9.4 6.5H20M4 12h2.2M9.4 12H20M4 17.5h2.2M9.4 17.5H20"/>',
+  'grid-view': '<rect x="4" y="4" width="6.6" height="6.6" rx="1.4"/><rect x="13.4" y="4" width="6.6" height="6.6" rx="1.4"/><rect x="4" y="13.4" width="6.6" height="6.6" rx="1.4"/><rect x="13.4" y="13.4" width="6.6" height="6.6" rx="1.4"/>',
   check: '<path d="M20 6.5 9.2 17.3l-5.2-5.2"/>',
   'check-circle': '<circle cx="12" cy="12" r="9"/><path d="M8 12.4l2.7 2.7L16.2 9"/>',
   alert: '<path d="M12 3.2 2.6 20h18.8L12 3.2Z"/><path d="M12 9.2v4.6"/><circle cx="12" cy="16.9" r="0.7" fill="currentColor" stroke="none"/>',
@@ -1248,6 +1279,11 @@ function normTask(t) {
     createdAt: str(t.createdAt) || new Date().toISOString()
   };
 }
+/* 여러 이름의 날짜 값 중 첫 번째 정상 날짜를 쓴다 (예전 이름의 데이터도 그대로 살린다) */
+function firstISO() {
+  for (var i = 0; i < arguments.length; i++) if (isISODate(arguments[i])) return arguments[i];
+  return '';
+}
 function normProject(p) {
   p = p || {};
   return {
@@ -1256,9 +1292,10 @@ function normProject(p) {
     name: str(p.name).slice(0, 100),
     client: str(p.client).slice(0, 100),
     siteId: safeRef(p.siteId),
-    contract: isISODate(p.contract) ? p.contract : '',
-    start: isISODate(p.start) ? p.start : '',
-    end: isISODate(p.end) ? p.end : '',
+    /* 계약일 · 착공일 · 준공일 — 예전 이름(계약일자/시작일/종료일 등)도 같은 칸으로 모음 */
+    contract: firstISO(p.contract, p.contractDate, p.contractOn),
+    start: firstISO(p.start, p.groundbreaking, p.startDate, p.workStart),
+    end: firstISO(p.end, p.completion, p.endDate, p.workEnd),
     status: SITE_STATUS[p.status] ? p.status : 'active',
     memo: str(p.memo).slice(0, 1000),
     createdAt: str(p.createdAt) || new Date().toISOString()
@@ -1355,6 +1392,8 @@ var ui = {
   calMonth: null,
   dashMonth: null,
   task: { q: '', status: 'all', type: 'all', site: 'all', month: 'all' },
+  project: { q: '', status: 'all' },
+  projectView: { mode: 'list', sort: 'no', dir: 'asc' },
   doc: { q: '', site: 'all', cat: 'all', status: 'all' },
   pendingConfirm: null,
   searchTimer: null,
@@ -1377,6 +1416,24 @@ var ui = {
   travelPersonListId: ''
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
+
+/* ========================= projects view preference ========================= */
+/* 목록형(기본)/카드형 선택과 공사코드 정렬은 이 브라우저에 기억해 둔다 */
+function loadProjectView() {
+  var v = { mode: 'list', sort: 'no', dir: 'asc' };
+  try {
+    var raw = window.localStorage.getItem(PROJECT_VIEW_KEY);
+    if (!raw) return v;
+    var o = JSON.parse(raw);
+    if (o && o.mode === 'card') v.mode = 'card';
+    if (o && (o.sort === 'no' || o.sort === 'none')) v.sort = o.sort;
+    if (o && o.dir === 'desc') v.dir = 'desc';
+  } catch (e) { }
+  return v;
+}
+function saveProjectView() {
+  try { window.localStorage.setItem(PROJECT_VIEW_KEY, JSON.stringify(ui.projectView)); } catch (e) { }
+}
 
 /* ========================= bulk selection ========================= */
 var BULK_SECTIONS = ['tasks', 'projects', 'sites', 'docs', 'events'];
@@ -2207,21 +2264,146 @@ function taskTableRow(t) {
 }
 
 /* ------------------------- projects ------------------------- */
+var PROJECT_STATUS_FILTERS = [['all', '전체 상태'], ['active', '진행중'], ['planned', '예정'], ['done', '완료'], ['hold', '보류']];
+
+/* 프로젝트의 계약일 형식 (2026.01.05) — 표·카드 공통 */
+function projectDateText(iso) {
+  if (!isISODate(iso)) return '';
+  return iso.slice(0, 4) + '.' + iso.slice(5, 7) + '.' + iso.slice(8, 10);
+}
+function projectDateCell(iso) {
+  return isISODate(iso) ? '<span class="nowrap">' + projectDateText(iso) + '</span>' : '<span class="muted">-</span>';
+}
+function projectHaystack(p) {
+  return [p.no, p.name, p.client, p.siteId ? siteName(p.siteId) : ''].join(' ').toLowerCase();
+}
+/* 검색(공사코드·프로젝트명·발주처·현장) + 상태 필터 + 공사코드 정렬 */
+function filteredProjects() {
+  var q = ui.project.q.trim().toLowerCase();
+  var list = db.projects.filter(function (p) {
+    if (ui.project.status !== 'all' && p.status !== ui.project.status) return false;
+    if (q && projectHaystack(p).indexOf(q) < 0) return false;
+    return true;
+  });
+  return sortProjects(list);
+}
+function sortProjects(list) {
+  var out = list.slice();
+  if (ui.projectView.sort !== 'no') return out;
+  var dir = ui.projectView.dir === 'desc' ? -1 : 1;
+  out.sort(function (a, b) {
+    var an = str(a.no).trim(), bn = str(b.no).trim();
+    if (!an && !bn) return 0;
+    if (!an) return 1;   /* 공사코드가 없는 프로젝트는 방향과 상관없이 뒤에 */
+    if (!bn) return -1;
+    return an.localeCompare(bn, 'ko', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+  return out;
+}
+function setProjectViewMode(mode) {
+  ui.projectView.mode = mode === 'card' ? 'card' : 'list';
+  saveProjectView();
+  render();
+}
+/* 공사코드 머리글: 처음 누르면 오름차순, 다시 누르면 내림차순 */
+function sortProjectsByNo() {
+  if (ui.projectView.sort === 'no') ui.projectView.dir = ui.projectView.dir === 'asc' ? 'desc' : 'asc';
+  else { ui.projectView.sort = 'no'; ui.projectView.dir = 'asc'; }
+  saveProjectView();
+  render();
+}
+function resetProjectFilter() {
+  ui.project = { q: '', status: 'all' };
+  render();
+}
+function projectSortHead() {
+  var on = ui.projectView.sort === 'no';
+  var desc = ui.projectView.dir === 'desc';
+  return '<th class="sortable' + (on ? ' on' : '') + '" data-action="project-sort" tabindex="0" title="공사코드 순서로 정렬"'
+    + ' aria-sort="' + (on ? (desc ? 'descending' : 'ascending') : 'none') + '">공사코드<span class="sort-ind">'
+    + icon(desc ? 'chevron-down' : 'chevron-up', 12) + '</span></th>';
+}
 function viewProjects() {
-  pruneSel('projects', db.projects.map(function (p) { return p.id; }));
-  var cards = db.projects.map(projectCard).join('');
-  var body = db.projects.length
-    ? '<div class="grid">' + cards + '</div>'
-    : '<div class="card">' + emptyState('layers', '등록된 프로젝트가 없습니다', '프로젝트를 등록하고 업무를 연결하면 진행률을 자동으로 계산해 드립니다.', '프로젝트 등록', 'new-project') + '</div>';
-  return '<div class="view-head"><p class="view-sub">전체 ' + db.projects.length + '개 프로젝트 · 연결된 업무 ' + db.tasks.filter(function (t) { return t.projectId; }).length + '건</p>'
-    + '<button class="btn btn-primary" data-action="new-project">' + icon('plus', 16) + ' 프로젝트 등록</button></div>'
-    + bulkBar('projects', db.projects.length)
+  var list = filteredProjects();
+  pruneSel('projects', list.map(function (p) { return p.id; }));
+  var activeN = 0, doneN = 0;
+  db.projects.forEach(function (p) {
+    if (p.status === 'done') doneN++;
+    else if (p.status === 'active') activeN++;
+  });
+  var filtering = !!ui.project.q.trim() || ui.project.status !== 'all';
+  var toolbar = '<div class="toolbar">'
+    + '<div class="search-box">' + icon('search', 16)
+    + '<input id="projectSearch" type="search" placeholder="공사코드·프로젝트명·발주처·현장 검색" value="' + esc(ui.project.q) + '" aria-label="프로젝트 검색"></div>'
+    + '<select data-filter="project.status" aria-label="프로젝트 상태 필터">' + options(PROJECT_STATUS_FILTERS, ui.project.status) + '</select>'
+    + (filtering ? '<button class="link" data-action="reset-project-filter">필터 초기화</button>' : '')
+    + '<div class="spacer"></div>'
+    + '<span class="muted" style="font-size:12px;font-weight:700">' + list.length + ' / ' + db.projects.length + '개</span>'
+    + '</div>';
+  var body;
+  if (!db.projects.length) {
+    body = '<div class="card">' + emptyState('layers', '등록된 프로젝트가 없습니다', '프로젝트를 등록하면 계약일·착공일·준공일과 연결 업무를 한눈에 볼 수 있습니다.', '프로젝트 등록', 'new-project') + '</div>';
+  } else if (!list.length) {
+    body = '<div class="card">' + emptyState('search', '조건에 맞는 프로젝트가 없습니다', '검색어나 상태 필터를 바꿔서 다시 찾아보세요.', '', '') + '</div>';
+  } else if (ui.projectView.mode === 'card') {
+    body = '<div class="grid">' + list.map(projectCard).join('') + '</div>';
+  } else {
+    body = '<div class="table-card"><div class="table-scroll"><table class="table projects"><thead><tr>'
+      + '<th class="sel-cell">' + bulkSelectAllBox('projects') + '</th>'
+      + projectSortHead()
+      + '<th style="min-width:200px">프로젝트명</th><th>발주처 / 현장</th>'
+      + '<th>계약일</th><th>착공일</th><th>준공일</th><th>상태</th><th>연결 업무</th><th style="text-align:right">관리</th>'
+      + '</tr></thead><tbody>' + list.map(projectRow).join('') + '</tbody></table></div></div>';
+  }
+  var toggle = '<div class="view-toggle" role="group" aria-label="보기 방식">'
+    + '<button type="button" data-action="project-view" data-mode="list" aria-pressed="' + (ui.projectView.mode !== 'card') + '">'
+    + icon('list-view', 14) + ' 목록형</button>'
+    + '<button type="button" data-action="project-view" data-mode="card" aria-pressed="' + (ui.projectView.mode === 'card') + '">'
+    + icon('grid-view', 14) + ' 카드형</button>'
+    + '</div>';
+  var sub = '전체 ' + db.projects.length + '개 프로젝트 · 진행중 ' + activeN + ' · 완료 ' + doneN
+    + ' · 연결된 업무 ' + db.tasks.filter(function (t) { return t.projectId; }).length + '건'
+    + (filtering ? ' · ' + list.length + '개 표시' : '');
+  return '<div class="view-head"><p class="view-sub">' + sub + '</p>'
+    + '<div class="view-head-actions">' + toggle
+    + '<button class="btn btn-primary" data-action="new-project">' + icon('plus', 16) + ' 프로젝트 등록</button></div></div>'
+    + toolbar
+    + bulkBar('projects', list.length)
     + body;
+}
+/* 발주처와 현장: 같으면 발주처 한 줄, 다르면 발주처 아래에 현장을 함께 */
+function projectClientSite(p) {
+  var site = p.siteId ? siteName(p.siteId) : '';
+  if (!p.client && !site) return '<span class="muted">-</span>';
+  if (!site || !p.client || nameKey(site) === nameKey(p.client)) {
+    return '<span class="client">' + esc(p.client || site) + '</span>';
+  }
+  return '<span class="client">' + esc(p.client) + '</span>'
+    + '<span class="site">' + icon('crane', 11) + ' ' + esc(site) + '</span>';
+}
+function projectRow(p) {
+  var st = projectStats(p.id);
+  var stt = SITE_STATUS[p.status] || SITE_STATUS.active;
+  return '<tr' + (selHas('projects', p.id) ? ' class="is-selected"' : '') + ' data-row-id="' + p.id + '">'
+    + '<td class="sel-cell">' + bulkCheckbox('projects', p.id, p.name) + '</td>'
+    + '<td class="nowrap">' + (p.no ? esc(p.no) : '<span class="muted">-</span>') + '</td>'
+    + '<td><div class="cell-title"><span class="txt" title="' + esc(p.name) + '">' + esc(p.name) + '</span>'
+    + (p.memo ? '<span class="muted" title="' + esc(p.memo) + '">' + icon('file', 13) + '</span>' : '') + '</div></td>'
+    + '<td><div class="cell-pair">' + projectClientSite(p) + '</div></td>'
+    + '<td class="date-cell">' + projectDateCell(p.contract) + '</td>'
+    + '<td class="date-cell">' + projectDateCell(p.start) + '</td>'
+    + '<td class="date-cell">' + projectDateCell(p.end) + '</td>'
+    + '<td>' + badge(stt.cls, stt.label) + '</td>'
+    + '<td><span class="count-chip' + (st.total ? '' : ' zero') + '">' + st.total + '건</span></td>'
+    + '<td><div class="actions">'
+    + '<button class="btn btn-ghost btn-xs" data-action="project-detail" data-id="' + p.id + '">' + icon('clipboard', 13) + ' 업무</button>'
+    + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="' + esc(p.name) + ' 수정">' + icon('edit', 15) + '</button>'
+    + '<button class="icon-sm danger" data-action="del-project" data-id="' + p.id + '" aria-label="' + esc(p.name) + ' 삭제">' + icon('trash', 15) + '</button>'
+    + '</div></td></tr>';
 }
 function projectCard(p) {
   var st = projectStats(p.id);
   var stt = SITE_STATUS[p.status] || SITE_STATUS.active;
-  var period = (p.start || p.end) ? ((p.start ? fmtDot(p.start) : '미정') + ' ~ ' + (p.end ? fmtDot(p.end) : '미정')) : '기간 미입력';
   return '<div class="entity' + (selHas('projects', p.id) ? ' is-selected' : '') + '" data-entity-id="' + p.id + '">'
     + '<div class="entity-head">'
     + bulkCheckbox('projects', p.id, p.name)
@@ -2231,13 +2413,13 @@ function projectCard(p) {
     + '</div>'
     + '<div class="meta-list">'
     + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
-    + (p.contract ? '<div><span>계약일</span><b>' + fmtDot(p.contract) + '</b></div>' : '')
+    + '<div><span>계약일</span><b>' + projectDateCell(p.contract) + '</b></div>'
+    + '<div><span>착공일</span><b>' + projectDateCell(p.start) + '</b></div>'
+    + '<div><span>준공일</span><b>' + projectDateCell(p.end) + '</b></div>'
     + '<div><span>현장</span><b>' + (p.siteId ? esc(siteName(p.siteId)) : '-') + '</b></div>'
-    + '<div><span>기간</span><b>' + period + '</b></div>'
-    + '<div><span>연결 업무</span><b>' + st.total + '건 (완료 ' + st.done + '건)</b></div>'
+    + '<div><span>연결 업무</span><b><span class="count-chip' + (st.total ? '' : ' zero') + '">' + st.total + '건</span></b></div>'
     + (p.memo ? '<div><span>메모</span><b>' + esc(p.memo) + '</b></div>' : '')
     + '</div>'
-    + '<div class="progress-row"><div class="progress"><span style="width:' + st.rate + '%"></span></div><b>' + st.rate + '%</b></div>'
     + '<div class="entity-foot">'
     + '<button class="btn btn-ghost btn-sm" data-action="project-detail" data-id="' + p.id + '">업무 보기</button>'
     + '<button class="icon-sm" data-action="edit-project" data-id="' + p.id + '" aria-label="수정">' + icon('edit', 15) + '</button>'
@@ -3127,10 +3309,12 @@ function openProjectModal(id) {
     + '<input name="name" maxlength="80" value="' + esc(d.name) + '" placeholder="예) A현장 골조공사"></div>'
     + '<div class="f"><label>발주처</label><input name="client" maxlength="60" value="' + esc(d.client) + '" placeholder="예) ○○건설"></div>'
     + '<div class="f"><label>현장</label><select name="siteId">' + siteOptions(d.siteId) + '</select></div>'
-    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력해 등록하면 발주처 이름의 현장이 현장관리에 자동으로 만들어지고(같은 이름이 있으면 그 현장에 연결), 모든 메뉴에서 만든 프로젝트에도 동일하게 적용됩니다.</div></div>'
-    + '<div class="f"><label>시작일</label><input type="date" name="start" value="' + esc(d.start) + '"></div>'
-    + '<div class="f"><label>종료일</label><input type="date" name="end" value="' + esc(d.end) + '"></div>'
+    + '<div class="f full" style="margin-top:-4px"><div class="note" style="margin:0">발주처를 입력하거나 고치면 발주처 이름의 현장이 현장관리에 자동으로 만들어져 연결됩니다(같은 이름의 현장이 있으면 그 현장을 씁니다). 현장 칸에서 다른 현장을 직접 고르면 그 현장을 그대로 씁니다.</div></div>'
+    + '<div class="date-grid">'
     + '<div class="f"><label>계약일</label><input type="date" name="contract" value="' + esc(d.contract) + '"></div>'
+    + '<div class="f"><label>착공일</label><input type="date" name="start" value="' + esc(d.start) + '"></div>'
+    + '<div class="f"><label>준공일</label><input type="date" name="end" value="' + esc(d.end) + '"></div>'
+    + '</div>'
     + '<div class="f"><label>상태</label><select name="status">'
     + options([['active', '진행중'], ['planned', '예정'], ['done', '완료'], ['hold', '보류']], d.status) + '</select></div>'
     + '<div class="f full"><label>메모</label><textarea name="memo" maxlength="500" placeholder="프로젝트 관련 메모">' + esc(d.memo) + '</textarea></div>'
@@ -3150,16 +3334,20 @@ function saveProjectForm(form) {
     memo: fv(form, 'memo')
   };
   if (payload.start && payload.end && payload.end < payload.start) {
-    return fieldError(form, 'end', '종료일이 시작일보다 빠릅니다.');
+    return fieldError(form, 'end', '준공일이 착공일보다 빠릅니다.');
   }
   if (id) {
     var p = byId(db.projects, id);
     if (!p) { closeModal(); render(); return; }
+    var oldSiteId = str(p.siteId);
+    var sitePicked = str(fv(form, 'siteId'));
+    var siteManual = sitePicked !== oldSiteId;   /* 현장 칸을 직접 고른 경우 */
     Object.keys(payload).forEach(function (k) { p[k] = payload[k]; });
-    if (!str(p.siteId) && p.client) {
-      var ps = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.name });
-      if (ps) p.siteId = ps.id;
-    }
+    /* 현장을 직접 고르지 않았다면, 발주처(입력·수정) 이름의 현장을 규칙대로 자동 생성해 연결한다 */
+    var ps = payload.client
+      ? ensureSiteForClient(payload.client, { start: p.start, end: p.end, status: p.status, projectName: p.name })
+      : null;
+    if (ps && (!siteManual || !sitePicked)) p.siteId = ps.id;
     toast('프로젝트를 수정했습니다.');
   } else {
     var np = normProject(payload);
@@ -3350,12 +3538,13 @@ function openProjectDetail(id) {
     + '<span class="pill-count">업무 ' + st.total + '건</span>'
     + '<span class="pill-count">완료 ' + st.done + '건</span>'
     + (st.late ? '<span class="badge red">지연 ' + st.late + '건</span>' : '') + '</div>'
-    + '<div class="progress-row" style="margin-bottom:16px"><div class="progress"><span style="width:' + st.rate + '%"></span></div><b>' + st.rate + '%</b></div>'
     + '<div class="meta-list">'
     + '<div><span>발주처</span><b>' + esc(p.client || '-') + '</b></div>'
-    + '<div><span>계약일</span><b>' + (p.contract ? fmtDot(p.contract) : '-') + '</b></div>'
+    + (p.no ? '<div><span>공사코드</span><b>' + esc(p.no) + '</b></div>' : '')
+    + '<div><span>계약일</span><b>' + (isISODate(p.contract) ? projectDateText(p.contract) : '-') + '</b></div>'
+    + '<div><span>착공일</span><b>' + (isISODate(p.start) ? projectDateText(p.start) : '-') + '</b></div>'
+    + '<div><span>준공일</span><b>' + (isISODate(p.end) ? projectDateText(p.end) : '-') + '</b></div>'
     + '<div><span>현장</span><b>' + (p.siteId ? esc(siteName(p.siteId)) : '-') + '</b></div>'
-    + '<div><span>기간</span><b>' + (p.start || p.end ? (p.start ? fmtShort(p.start) : '미정') + ' ~ ' + (p.end ? fmtShort(p.end) : '미정') : '-') + '</b></div>'
     + (p.memo ? '<div><span>메모</span><b>' + esc(p.memo) + '</b></div>' : '')
     + '</div>'
     + '<div class="detail-sec">' + icon('clipboard', 14) + ' 연결된 업무</div>'
@@ -9421,6 +9610,7 @@ function applyFilter(path, value) {
   var parts = path.split('.');
   if (parts.length !== 2) return;
   if (parts[0] === 'task') ui.task[parts[1]] = value;
+  else if (parts[0] === 'project') ui.project[parts[1]] = value;
   else if (parts[0] === 'doc') ui.doc[parts[1]] = value;
   render();
 }
@@ -9515,6 +9705,9 @@ document.addEventListener('click', function (e) {
     case 'edit-task': openTaskModal(id); break;
     case 'del-task': deleteTask(id); break;
     case 'new-project': openProjectModal(); break;
+    case 'project-view': setProjectViewMode(el.getAttribute('data-mode')); break;
+    case 'project-sort': sortProjectsByNo(); break;
+    case 'reset-project-filter': resetProjectFilter(); break;
     case 'edit-project': openProjectModal(id); break;
     case 'del-project': deleteProject(id); break;
     case 'project-detail': openProjectDetail(id); break;
@@ -9758,6 +9951,12 @@ document.addEventListener('input', function (e) {
     ui.searchTimer = setTimeout(function () { rerenderKeepingFocus('taskSearch', el.value.length); }, 220);
     return;
   }
+  if (el.id === 'projectSearch') {
+    ui.project.q = el.value;
+    clearTimeout(ui.searchTimer);
+    ui.searchTimer = setTimeout(function () { rerenderKeepingFocus('projectSearch', el.value.length); }, 220);
+    return;
+  }
   if (el.id === 'docSearch') {
     ui.doc.q = el.value;
     clearTimeout(ui.searchTimer);
@@ -9827,6 +10026,11 @@ document.addEventListener('keydown', function (e) {
       openMonthTasks(e.target.getAttribute('data-month') || dashMonthKey());
       return;
     }
+    if (act === 'project-sort') {
+      e.preventDefault();
+      sortProjectsByNo();
+      return;
+    }
   }
   if (e.key === 'Escape' || e.key === 'Esc') {
     var modal = document.querySelector('.modal-backdrop');
@@ -9860,6 +10064,8 @@ function init() {
   hydrateIcons();
   if (!ui.calMonth) ui.calMonth = new Date();
   if (!ui.dashMonth) ui.dashMonth = currentMonthKey();
+  /* 프로젝트 관리 보기 방식(목록형/카드형)·공사코드 정렬 복원 */
+  ui.projectView = loadProjectView();
   /* 새로고침만 해도 업체 결제 현황의 모든 공사가 프로젝트 관리에 들어오도록 1회 동기화한다.
      이미 등록된 프로젝트는 건드리지 않고 비어 있는 칸만 채우므로 몇 번을 실행해도 늘지 않는다. */
   try { syncVendorProjectsToProjects(db, { silent: true }); } catch (e) { }
