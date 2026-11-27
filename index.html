@@ -3015,29 +3015,35 @@ function saveTaskForm(form) {
    발주처명과 같은 현장이 없으면 현장관리에도 만들어 연결한다.
    ========================================================= */
 function nameKey(v) { return str(v).replace(/\s+/g, '').toLowerCase(); }
-function projectByNo(no) {
-  var k = str(no).trim();
+/* target(데이터 묶음)을 주면 그 안에서 찾는다. 없으면 지금 화면의 db 에서 찾는다. */
+function projectByNo(no, target) {
+  var t = target || db, k = str(no).trim();
   if (!k) return null;
-  for (var i = 0; i < db.projects.length; i++) if (str(db.projects[i].no).trim() === k) return db.projects[i];
+  var list = arr(t.projects);
+  for (var i = 0; i < list.length; i++) if (str(list[i].no).trim() === k) return list[i];
   return null;
 }
-function projectByName(name) {
-  var k = nameKey(name);
+function projectByName(name, target) {
+  var t = target || db, k = nameKey(name);
   if (!k) return null;
-  for (var i = 0; i < db.projects.length; i++) if (nameKey(db.projects[i].name) === k) return db.projects[i];
+  var list = arr(t.projects);
+  for (var i = 0; i < list.length; i++) if (nameKey(list[i].name) === k) return list[i];
   return null;
 }
-function siteByName(name) {
-  var k = nameKey(name);
+function siteByName(name, target) {
+  var t = target || db, k = nameKey(name);
   if (!k) return null;
-  for (var i = 0; i < db.sites.length; i++) if (nameKey(db.sites[i].name) === k) return db.sites[i];
+  var list = arr(t.sites);
+  for (var i = 0; i < list.length; i++) if (nameKey(list[i].name) === k) return list[i];
   return null;
 }
-/* 발주처명과 같은 이름의 현장을 찾고, 없으면 만든다 */
-function ensureSiteForClient(client, base) {
+/* 발주처명과 같은 이름의 현장을 찾고, 없으면 만든다.
+   같은 발주처는 몇 번을 불러도 현장 1개만 쓰도록 이름으로 재사용한다(중복 생성 금지). */
+function ensureSiteForClient(client, base, target) {
+  var t = target || db;
   var nm = str(client).trim().slice(0, 80);
   if (!nm) return null;
-  var found = siteByName(nm);
+  var found = siteByName(nm, t);
   if (found) return found;
   base = base || {};
   var ns = normSite({
@@ -3049,21 +3055,24 @@ function ensureSiteForClient(client, base) {
   });
   ns.id = uid('site');
   ns.createdAt = new Date().toISOString();
-  db.sites.push(ns);
+  if (!Array.isArray(t.sites)) t.sites = [];
+  t.sites.push(ns);
   return ns;
 }
-/* o = { no, client, name, contract, start, end, memo, quiet } */
-function ensureProject(o) {
+/* o = { no, client, name, contract, start, end, memo, quiet }, target = 데이터 묶음(기본 db) */
+function ensureProject(o, target) {
   o = o || {};
+  var t = target || db;
+  var isLive = (t === db);
   var no = str(o.no).trim().slice(0, 40);
   var client = str(o.client).trim().slice(0, 60);
   var pname = str(o.name).trim().slice(0, 100);
   if (!no && !client && !pname) return null;
   /* 공사코드가 있으면 코드로 먼저 찾고, 이름만 같은 다른 공사(예: 영광군농협 3개 공사)와
      섞이지 않도록 코드가 비어 있는 프로젝트일 때만 이름으로 이어 붙인다. */
-  var p = no ? projectByNo(no) : null;
+  var p = no ? projectByNo(no, t) : null;
   if (!p && pname) {
-    var byName = projectByName(pname);
+    var byName = projectByName(pname, t);
     if (byName && (!no || !str(byName.no).trim())) p = byName;
   }
   if (p) {
@@ -3074,9 +3083,9 @@ function ensureProject(o) {
     var placeholder = nameKey(p.name) === nameKey(p.client);
     if (pname && (!str(p.name).trim() || (placeholder && nameKey(pname) !== nameKey(p.name)))) { p.name = pname; changed = true; }
     if (isISODate(o.contract) && !str(p.contract).trim()) { p.contract = o.contract; changed = true; }
-    var site0 = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.name });
+    var site0 = ensureSiteForClient(p.client, { start: p.start, end: p.end, status: p.status, projectName: p.name }, t);
     if (site0 && !str(p.siteId)) { p.siteId = site0.id; changed = true; }
-    if (changed) saveDB();
+    if (changed && isLive) saveDB();
     return p;
   }
   if (!pname && !(no && client)) return null;
@@ -3086,11 +3095,12 @@ function ensureProject(o) {
   });
   np.id = uid('prj');
   np.createdAt = new Date().toISOString();
-  var site = ensureSiteForClient(client, { start: np.start, end: np.end, status: np.status, projectName: np.name });
+  var site = ensureSiteForClient(client, { start: np.start, end: np.end, status: np.status, projectName: np.name }, t);
   if (site) np.siteId = site.id;
-  db.projects.push(np);
-  saveDB();
-  if (!o.quiet) toast('새 프로젝트(' + (np.name || np.no) + ')를 프로젝트 관리에 등록했습니다.');
+  if (!Array.isArray(t.projects)) t.projects = [];
+  t.projects.push(np);
+  if (isLive) saveDB();
+  if (!o.quiet && isLive) toast('새 프로젝트(' + (np.name || np.no) + ')를 프로젝트 관리에 등록했습니다.');
   return np;
 }
 /* 프로젝트 선택 드롭다운 옆에 두는 '새 프로젝트 직접 입력' 칸 */
@@ -8235,6 +8245,11 @@ function saveVendor() {
   catch (e) { toast('업체 결제 현황을 저장하지 못했습니다. 저장 공간을 확인해 주세요.', 'alert'); }
 }
 var vendor = loadVendor();
+/* 화면을 열자마자(새로고침 한 번으로) 업체 결제 현황의 모든 공사가 프로젝트 관리에 들어오도록
+   데이터를 읽은 직후에 1회 동기화한다. 이미 있는 프로젝트는 비어 있는 칸만 보충하므로
+   몇 번을 실행해도 늘지 않는다. 내장 2026공사 목록만 있고 저장된 적이 없는 새 브라우저도
+   여기서 프로젝트가 만들어진다. */
+try { syncVendorProjectsToProjects(db, { silent: true }); } catch (e) { }
 
 function vendorById(id) { return byId(vendor.items, id); }
 
@@ -8695,55 +8710,97 @@ function saveVendorForm(form) {
   saveVendor(); closeModal(); render();
 }
 /* 업체 결제 내역의 공사코드·공사명을 프로젝트 관리와 맞춘다(없으면 등록) */
-function syncVendorProject(it) {
+function syncVendorProject(it, target) {
   if (!it) return null;
-  return ensureProject({ no: it.code, name: vendorProjectName(it), quiet: true });
+  return ensureProject({
+    no: vendorItemCode(it),
+    name: vendorProjectName(it),
+    client: vendorItemClient(it),
+    contract: vendorItemContractDate(it),
+    quiet: true
+  }, target);
+}
+/* 업체 결제 한 건의 공사코드 (시트의 code / 다른 자료의 projectCode) */
+function vendorItemCode(x) {
+  return str(x && (x.code || x.projectCode)).trim().slice(0, 40);
 }
 /* 업체 결제 현황의 공사명 → 프로젝트명 (줄바꿈은 공백 한 칸으로) */
 function vendorProjectName(x) {
   return str(x && x.name).replace(/\s*\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
+/* 업체 결제 한 건의 발주처 (자료에 있을 때만. 2026공사 시트에는 발주처 칸이 없다) */
+function vendorItemClient(x) {
+  return str(x && (x.client || x.projectClient || x.orderer || x.owner)).trim().slice(0, 60);
+}
+/* 업체 결제 한 건의 계약일. 시트의 date1~date3 는 지급일이라 쓰지 않고,
+   계약일(contractDate)이 들어 있는 자료에서만 값을 읽는다. */
+function vendorItemContractDate(x) {
+  var d = str(x && (x.contractDate || x.contract_date)).trim();
+  return isISODate(d) ? d : '';
+}
 /* 업체 결제 현황을 공사 단위로 묶는다.
    - 공사코드가 있으면 코드가 같은 행을 한 공사로 본다(업체가 여러 곳이어도 1개).
    - 코드가 없으면 공사명이 같은 행을 한 공사로 본다.
    - 코드가 다르면 공사명이 같아도 다른 공사로 본다(예: 영광군농협 202601009·202601010·202606002). */
-function vendorProjectGroups() {
+function vendorProjectGroupsOf(items) {
   var map = {}, out = [];
-  arr(vendor.items).forEach(function (x) {
-    var code = str(x.code).trim();
+  arr(items).forEach(function (x) {
+    var code = vendorItemCode(x);
     var nm = vendorProjectName(x);
     var key = code ? ('code:' + code) : (nameKey(nm) ? ('name:' + nameKey(nm)) : '');
     if (!key) return;
     var g = map[key];
     if (!g) {
-      g = { key: key, code: code, name: '', count: 0, vendors: {} };
+      g = { key: key, code: code, name: '', client: '', contract: '', count: 0, vendors: {} };
       map[key] = g;
       out.push(g);
     }
     if (!g.name && nm) g.name = nm;
+    var cl = vendorItemClient(x);
+    if (!g.client && cl) g.client = cl;
+    var cd = vendorItemContractDate(x);
+    if (!g.contract && cd) g.contract = cd;
     g.count += 1;
     var vn = str(x.vendor).trim();
     if (vn) g.vendors[vn] = true;
   });
   return out;
 }
-/* 업체 결제 현황의 모든 공사를 프로젝트 관리에 반영한다(중복 없이, 빈 칸만 보충).
-   화면 첫 진입·새로고침, 업체 결제 추가·수정, 엑셀/내장 데이터 불러오기, 백업 불러오기에서 모두 호출된다. */
-function syncVendorProjects(opts) {
+/* 업체 결제 현황을 한 번이라도 저장한 적이 있는지(내장 데이터를 새로 깔아도 되는 새 브라우저인지 판단) */
+function vendorStoreSaved() {
+  try { return window.localStorage.getItem(VENDOR_KEY) !== null; } catch (e) { return false; }
+}
+/* 동기화에 쓸 업체 결제 건
+   ① 넘겨받은 데이터(targetDb.vendorPayments) ② 화면의 업체 결제 현황(업체 결제 시트)
+   ③ 둘 다 비어 있고 한 번도 저장한 적 없는 새 브라우저면 내장 2026공사 목록 */
+function vendorSyncItems(target) {
+  var list = arr(target && target.vendorPayments);
+  if (!list.length && target === db) list = arr(vendor.items);
+  if (!list.length && !vendorStoreSaved()) list = arr(window.VENDOR_SEED);
+  return list;
+}
+/* 업체 결제 현황의 모든 공사를 프로젝트 관리(과 발주처 현장)에 반영한다.
+   - 이미 있는 프로젝트(공사코드 또는 프로젝트명 일치)는 새로 만들지 않고 비어 있는 칸만 보충한다.
+   - 같은 발주처는 현장 1개를 다시 쓰므로 몇 번을 실행해도 늘지 않는다.
+   - targetDb 를 주면 그 데이터에 반영한다(백업 복원·초기화 직후처럼 db 를 새로 만든 뒤). */
+function syncVendorProjectsToProjects(targetDb, opts) {
   opts = opts || {};
-  var groups = vendorProjectGroups();
-  var before = db.projects.length;
+  var t = (targetDb && typeof targetDb === 'object') ? targetDb : db;
+  var items = vendorSyncItems(t);
+  var groups = vendorProjectGroupsOf(items);
+  var before = arr(t.projects).length;
   var linked = 0;
   groups.forEach(function (g) {
-    if (!g.name) return;
-    var p = ensureProject({ no: g.code, name: g.name, quiet: true });
+    if (!g.name && !(g.code && g.client)) return;
+    var p = ensureProject({ no: g.code, name: g.name, client: g.client, contract: g.contract, quiet: true }, t);
     if (p) linked += 1;
   });
-  var added = db.projects.length - before;
+  var added = arr(t.projects).length - before;
+  if (t === db && added > 0) saveDB();
   if (added > 0 && !opts.silent) {
     toast('업체 결제 현황의 공사 ' + linked + '개를 프로젝트 관리에 등록했습니다.');
   }
-  return { total: groups.length, linked: linked, added: added };
+  return { total: groups.length, linked: linked, added: added, items: items.length };
 }
 function vendorDuplicate(id) {
   var it = vendorById(id);
@@ -8798,7 +8855,7 @@ function vendorApplyItems(items, label) {
   vendor.items = normalizeVendorItems(items);
   ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses(), sort: '' };
   saveVendor();
-  var synced = syncVendorProjects({ silent: true });
+  var synced = syncVendorProjectsToProjects(db, { silent: true });
   render();
   toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.'
     + (synced.total ? ' (프로젝트 ' + synced.total + '개를 프로젝트 관리에 반영)' : ''));
@@ -9312,7 +9369,7 @@ function importJSON(file) {
         if (parsed.travelPeople) { travelPeople = normTravelPeople(parsed.travelPeople); saveTravelPeople(); }
         if (Array.isArray(parsed.vendorPayments)) vendor.items = normalizeVendorItems(parsed.vendorPayments);
         saveVendor();
-        syncVendorProjects({ silent: true });
+        syncVendorProjectsToProjects(db, { silent: true });
         saveTravel();
         saveDB();
         saveLabor();
@@ -9347,7 +9404,9 @@ function resetAll() {
       ui.travelId = null;
       ui.travelEditing = false;
       vendor = emptyVendor();
-      try { window.localStorage.removeItem(VENDOR_KEY); } catch (e) { }
+      /* 초기화 뒤에는 내장 2026공사 목록이 다시 깔리지 않도록 '비어 있는 업체 결제 현황'을 남긴다. */
+      saveVendor();
+      syncVendorProjectsToProjects(db, { silent: true });
       ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses() };
       clearAllSel();
       ui.view = 'dashboard';
@@ -9791,7 +9850,7 @@ window.addEventListener('storage', function (e) {
     render();
   } else if (e && e.key === VENDOR_KEY) {
     vendor = loadVendor();
-    try { syncVendorProjects({ silent: true }); } catch (err) { }
+    try { syncVendorProjectsToProjects(db, { silent: true }); } catch (err) { }
     render();
   }
 });
@@ -9803,7 +9862,7 @@ function init() {
   if (!ui.dashMonth) ui.dashMonth = currentMonthKey();
   /* 새로고침만 해도 업체 결제 현황의 모든 공사가 프로젝트 관리에 들어오도록 1회 동기화한다.
      이미 등록된 프로젝트는 건드리지 않고 비어 있는 칸만 채우므로 몇 번을 실행해도 늘지 않는다. */
-  try { syncVendorProjects({ silent: true }); } catch (e) { }
+  try { syncVendorProjectsToProjects(db, { silent: true }); } catch (e) { }
   render();
 }
 if (document.readyState === 'loading') {
