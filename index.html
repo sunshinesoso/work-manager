@@ -555,9 +555,13 @@ ul{margin:0;padding:0;list-style:none}
 .trv-detail-scroll thead th{position:sticky;top:0;z-index:3}
 .trv-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .trv-tools .muted{font-size:11.5px}
-.trv-pick-bar{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:#F7FAFF;border:1px solid #E3EBF8;border-radius:12px}
-.trv-pick-bar .trv-pick-field{flex:1 1 220px;min-width:190px;max-width:360px}
-.trv-pick-bar .trv-pick-note{font-size:11.5px;color:#94A3B8;font-weight:600;margin-left:auto;padding-bottom:9px}
+.trv-person-head{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.trv-person-label{font-size:11.5px;font-weight:800;color:#64748B;white-space:nowrap}
+.trv-person-tools{display:flex;align-items:center;gap:3px;flex:none}
+.trv-mini{display:inline-flex;align-items:center;gap:2px;height:20px;padding:0 6px;border:1px solid #DCE4EF;border-radius:6px;background:#fff;color:#475569;font-size:10.5px;font-weight:800;font-family:inherit;line-height:1;cursor:pointer;white-space:nowrap}
+.trv-mini:hover{border-color:#2563EB;color:#1D4ED8;background:#F5F9FF}
+.trv-mini:focus-visible{outline:none;border-color:#2563EB;box-shadow:0 0 0 2px rgba(37,99,235,.18)}
+.trv-person-field select[data-trv="person"]{font-weight:800;color:#1D4ED8}
 .trv-people-tabs{margin-bottom:14px}
 .trv-tab-count{display:inline-block;min-width:18px;padding:0 5px;margin-left:2px;border-radius:9px;background:#E8EEF9;color:#475569;font-size:11px;font-weight:800;line-height:18px;text-align:center}
 .labor-tab.on .trv-tab-count{background:#fff;color:#2563EB}
@@ -566,7 +570,7 @@ ul{margin:0;padding:0;list-style:none}
 .trv-people-table{min-width:0}
 .trv-people-table th:last-child,.trv-people-table td:last-child{width:96px;white-space:nowrap}
 .trv-people-note{margin:12px 0 0;font-size:11.5px;color:#94A3B8;font-weight:600;line-height:1.55}
-@media(max-width:640px){.trv-people-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.trv-people-form .btn{grid-column:span 2}.trv-pick-bar .trv-pick-note{margin-left:0;padding-bottom:0}}
+@media(max-width:640px){.trv-people-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.trv-people-form .btn{grid-column:span 2}}
 .trv-kpis{margin-bottom:14px}
 .trv-board{display:flex;flex-direction:column;gap:6px}
 .trv-bar-row{display:grid;grid-template-columns:120px minmax(90px,1fr) minmax(80px,2fr) 110px 56px;gap:10px;align-items:center;font-size:12.5px}
@@ -716,6 +720,22 @@ ul{margin:0;padding:0;list-style:none}
 .vx-filters input,.vx-filters select{height:36px;border:1px solid #DCE4EF;border-radius:9px;padding:0 10px;font-size:12.5px;font-weight:700;color:#0F1E36;background:#fff;outline:none;max-width:100%;font-family:inherit}
 .vx-filters input:focus,.vx-filters select:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .vx-filters .vx-q{grid-column:span 1}
+.vx-status{grid-column:1/-1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.vx-status-label{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:#64748B}
+.vx-status-label em{font-style:normal;font-weight:800;font-size:10.5px;color:#2563EB;background:#EEF4FF;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.vx-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.vx-chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;height:32px;padding:0 11px;border-radius:999px;border:1px solid #DCE4EF;background:#fff;color:#475569;font-size:12.5px;font-weight:800;font-family:inherit;line-height:1;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+.vx-chip:hover{border-color:#B9C6DA;background:#F8FAFC;color:#1E293B}
+.vx-chip .n{font-size:10.5px;font-weight:800;color:#94A3B8;font-variant-numeric:tabular-nums}
+.vx-chip .dot{width:7px;height:7px;border-radius:50%;flex:none;background:#CBD5E1}
+.vx-chip.unpaid .dot{background:#DC2626}
+.vx-chip.billing .dot{background:#D97706}
+.vx-chip.paid .dot{background:#16A34A}
+.vx-chip.on{background:#EEF4FF;border-color:#2563EB;color:#1D4ED8;box-shadow:0 0 0 2px rgba(37,99,235,.10)}
+.vx-chip.on .n{color:#2563EB}
+.vx-chip.all.on{background:#0F1E36;border-color:#0F1E36;color:#fff;box-shadow:none}
+.vx-chip.all.on .n{color:#C7D2FE}
+.vx-chip:focus-visible{outline:none;border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.20)}
 .vx-filter-note{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 16px;background:#F8FAFC;border-bottom:1px solid #F1F4F9;font-size:11.5px;color:#64748B;font-weight:600}
 .vx-filter-note .link{color:#1D4ED8;font-weight:800;font-size:11.5px;text-decoration:underline}
 .vx-table{min-width:1080px}
@@ -1169,7 +1189,8 @@ var ui = {
   travelNewType: 'daily',
   travelFind: null,
   travelPeopleKind: 'staff',
-  travelPeopleEditId: ''
+  travelPeopleEditId: '',
+  travelPersonCustomId: ''
 };
 function dashMonthKey() { return ui.dashMonth || currentMonthKey(); }
 
@@ -5227,28 +5248,42 @@ function travelEditorHead(rep, t) {
 function trvKindFieldOptions(rep) {
   return options([[TRAVEL_KIND_CARD, '법인카드 (법인카드사용)'], [TRAVEL_KIND_CASH, '현금 (현금사용)']], rep.kind);
 }
-/* ---- 출장자 선택 상자: 명단에서 고르면 성명·직책이 자동으로 채워진다 ---- */
-function trvPersonPickOptions(rep) {
+/* ---- 성명 칸: 명단에서 고르면 성명·직책이 자동으로 채워진다 ---- */
+function trvPersonSelectOptions(rep) {
   var kind = travelPeopleKind(rep);
   var list = travelPeopleList(kind);
-  var label = travelPeopleKindLabel(kind);
-  var cur = str(rep.person).trim();
-  var matched = travelPersonByName(kind, cur);
-  var pairs = [['', '출장자 선택 · ' + label + (list.length ? '' : ' (명단 비어 있음)')]];
+  var pairs = [['', '명단에서 선택 (' + list.length + '명)']];
   list.forEach(function (p) { pairs.push([p.name, p.name + (str(p.rank).trim() ? ' · ' + p.rank : '')]); });
-  if (cur && !matched) pairs.push([cur, cur + ' (명단에 없음)']);
-  return options(pairs, matched ? matched.name : cur);
+  pairs.push(['__custom__', '직접 입력…']);
+  return options(pairs, trvPersonCurrent(rep));
 }
-function trvPersonPickBar(rep) {
+function trvPersonCurrent(rep) {
+  var cur = str(rep.person).trim();
+  if (!cur) return '';
+  var p = travelPersonByName(travelPeopleKind(rep), cur);
+  return p ? p.name : '';
+}
+/* 명단에 없는 이름을 쓰는 중이거나 목록에서 '직접 입력…'을 고른 상태 */
+function trvPersonManual(rep) {
+  if (!rep) return false;
+  var cur = str(rep.person).trim();
+  return ui.travelPersonCustomId === rep.id || (!!cur && !trvPersonCurrent(rep));
+}
+function trvPersonField(rep) {
   var kind = travelPeopleKind(rep);
   var label = travelPeopleKindLabel(kind);
-  return '<div class="trv-pick-bar">'
-    + '<label class="trv-field trv-pick-field"><span>' + label + ' 출장자 선택</span>'
-    + '<select data-trv-person-pick aria-label="' + label + ' 출장자 선택">' + trvPersonPickOptions(rep) + '</select></label>'
-    + '<button type="button" class="btn btn-ghost btn-sm" data-action="travel-people" data-kind="' + kind + '">' + icon('users', 15) + ' 출장자 관리</button>'
-    + '<button type="button" class="btn btn-primary btn-sm" data-action="travel-person-add" data-kind="' + kind + '">' + icon('plus', 15) + ' 사람 추가</button>'
-    + '<span class="trv-pick-note" data-trv-pick-note>' + travelPeopleList(kind).length + '명 · 고르면 성명·직책이 채워집니다.</span>'
-    + '</div>';
+  var manual = trvPersonManual(rep);
+  var tools = '<span class="trv-person-tools">'
+    + (manual ? '<button type="button" class="trv-mini" data-action="travel-person-list" title="명단에서 다시 고르기">목록</button>' : '')
+    + '<button type="button" class="trv-mini" data-action="travel-people" data-kind="' + kind + '" title="' + label + ' 출장자 명단 관리">명단</button>'
+    + '<button type="button" class="trv-mini" data-action="travel-person-add" data-kind="' + kind + '" title="' + label + ' 명단에 사람 추가">+ 추가</button>'
+    + '</span>';
+  var ctrl = manual
+    ? '<input type="text" data-trv="person" value="' + esc(rep.person) + '" placeholder="성명 직접 입력" aria-label="성명">'
+    : '<select data-trv="person" aria-label="성명 (출장자 명단)">' + trvPersonSelectOptions(rep) + '</select>';
+  return '<div class="trv-field trv-person-field">'
+    + '<span class="trv-person-head"><span class="trv-person-label">성명</span>' + tools + '</span>'
+    + ctrl + '</div>';
 }
 /* ---- 일용직 정산서 편집 ---- */
 function travelDailyEditor(rep) {
@@ -5257,11 +5292,10 @@ function travelDailyEditor(rep) {
 
   var basic = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('user', 15) + ' 기본 정보</h3><span class="sub">엑셀 상단 칸에 그대로 들어갑니다.</span></div>'
-    + trvPersonPickBar(rep)
     + '<div class="trv-form">'
     + trvField('부서', 'dept', rep.dept, { placeholder: '공사관리팀' })
     + trvField('직책', 'duty', rep.duty, { placeholder: '소장' })
-    + trvField('성명', 'person', rep.person, { placeholder: '홍영익' })
+    + trvPersonField(rep)
     + '<label class="trv-field"><span>지출 방법</span><select data-trv="kind" aria-label="지출 방법">'
     + trvKindFieldOptions(rep)
     + '</select></label>'
@@ -5345,12 +5379,11 @@ function travelStaffEditor(rep) {
 
   var basic = '<div class="trv-sec">'
     + '<div class="trv-sec-head"><h3>' + icon('user', 15) + ' 기본 정보</h3><span class="sub">상용직 양식(이병철 이사 정산서)의 상단 칸에 그대로 들어갑니다.</span></div>'
-    + trvPersonPickBar(rep)
     + '<div class="trv-form">'
     + trvField('작성일', 'writtenAt', rep.writtenAt, { type: 'date' })
     + trvField('부서', 'dept', rep.dept, { placeholder: '공사관리팀' })
     + trvField('직책', 'duty', rep.duty, { placeholder: '이사' })
-    + trvField('성명', 'person', rep.person, { placeholder: '이병철' })
+    + trvPersonField(rep)
     + '<label class="trv-field"><span>지출 방법</span><select data-trv="kind" aria-label="지출 방법">'
     + trvKindFieldOptions(rep)
     + '</select></label>'
@@ -5869,40 +5902,62 @@ function travelSetField(name, value) {
   travelSaveSoon();
   travelRefreshDOM();
 }
-/* 명단에서 출장자를 고르면 성명·직책을 채우고, 비어 있는 부서는 기본값으로 둔다 */
-function travelApplyPerson(name) {
+/* 성명 칸에서 명단 이름을 고르면 성명·직책을 채우고, '직접 입력…'은 입력칸으로 바꾼다 */
+function trvPersonPick(value) {
   var rep = travelCur();
   if (!rep) return;
-  var kind = travelPeopleKind(rep);
-  var p = travelPersonByName(kind, name);
-  if (!p) return;
-  rep.person = p.name;
-  if (str(p.rank).trim()) rep.duty = p.rank;
+  if (value === '__custom__') { trvPersonManualOn(true); return; }
+  if (!value) {
+    rep.person = '';
+    ui.travelPersonCustomId = '';
+    saveTravel(); render();
+    trvFocusSelector('[data-trv="person"]');
+    return;
+  }
+  var p = travelPersonByName(travelPeopleKind(rep), value);
+  rep.person = value;
+  if (p && str(p.rank).trim()) rep.duty = p.rank;
   if (!str(rep.dept).trim()) rep.dept = '공사관리팀';
-  saveTravel();
+  ui.travelPersonCustomId = '';
+  saveTravel(); render();
+  trvFocusSelector('[data-trv="person"]');
+}
+/* 성명 칸을 목록 ↔ 직접 입력으로 바꾼다 */
+function trvPersonManualOn(on) {
+  var rep = travelCur();
+  if (!rep) return;
+  ui.travelPersonCustomId = on ? rep.id : '';
   render();
-  toast(p.name + (str(p.rank).trim() ? ' · ' + p.rank : '') + ' 출장자로 채웠습니다.');
+  trvFocusSelector('[data-trv="person"]');
 }
 function trvSetInput(name, value) {
   var el = document.querySelector('.trv-editor [data-trv="' + name + '"]');
   if (el && el.value !== str(value)) el.value = str(value);
 }
-/* 입력한 성명·직책을 화면과 선택 상자에 맞춘다(직접 타이핑도 그대로 가능) */
+/* 직접 입력한 성명이 명단에 있는 이름이면 직책·부서를 맞춘다 */
+function trvPersonManualCommit() {
+  var rep = travelCur();
+  if (!rep) return;
+  var p = travelPersonByName(travelPeopleKind(rep), str(rep.person).trim());
+  if (p) {
+    if (str(p.rank).trim() && str(rep.duty).trim() !== str(p.rank).trim()) {
+      rep.duty = p.rank;
+      saveTravel();
+    }
+    if (!str(rep.dept).trim()) { rep.dept = '공사관리팀'; saveTravel(); }
+  }
+  trvPersonPickRefresh();
+}
+/* 입력한 성명·직책을 화면의 성명 칸과 머리말에 맞춘다 */
 function trvPersonPickRefresh() {
   var rep = travelCur();
   if (!rep) return;
-  var kind = travelPeopleKind(rep), cur = str(rep.person).trim();
-  var pick = document.querySelector('.trv-editor [data-trv-person-pick]');
-  if (pick) {
-    pick.innerHTML = trvPersonPickOptions(rep);
-    var matched = travelPersonByName(kind, cur);
-    var want = matched ? matched.name : cur;
-    var has = false;
-    for (var i = 0; i < pick.options.length; i++) { if (pick.options[i].value === want) { has = true; break; } }
-    pick.value = has ? want : '';
+  var cur = str(rep.person).trim();
+  var sel = document.querySelector('.trv-editor select[data-trv="person"]');
+  if (sel) {
+    sel.innerHTML = trvPersonSelectOptions(rep);
+    sel.value = trvPersonCurrent(rep);
   }
-  var note = document.querySelector('.trv-editor [data-trv-pick-note]');
-  if (note) note.textContent = travelPeopleList(kind).length + '명 · 고르면 성명·직책이 채워집니다.';
   trvSetInput('person', rep.person);
   trvSetInput('duty', rep.duty);
   trvSetInput('dept', rep.dept);
@@ -6121,6 +6176,7 @@ function travelPersonSave() {
   ui.travelPeopleEditId = '';
   saveTravelPeople();
   travelPeopleModalRefresh();
+  trvPersonPickRefresh();
   toast(editing
     ? (name + ' 출장자 정보를 고쳤습니다.')
     : (travelPeopleKindLabel(kind) + ' 명단에 ' + name + (rank ? ' ' + rank : '') + ' 님을 추가했습니다.'));
@@ -6171,7 +6227,6 @@ function trvFieldSelector(el) {
     return v === null || v === undefined || v === '' ? null : v;
   };
   if (key('data-trv')) return '[data-trv="' + key('data-trv') + '"]';
-  if (el.getAttribute('data-trv-person-pick') !== null) return '[data-trv-person-pick]';
   if (key('data-trv-purpose-pick')) return '[data-trv-purpose-pick="' + key('data-trv-purpose-pick') + '"]';
   if (key('data-trv-purpose-field')) return '[data-trv-purpose-field="' + key('data-trv-purpose-field') + '"][data-i="' + i + '"]';
   if (key('data-trv-row-pick')) return '[data-trv-row-pick="' + key('data-trv-row-pick') + '"]';
@@ -6208,6 +6263,7 @@ function trvCommitBeforeEnter(el) {
   if (!rep || !el.getAttribute) return;
   var v = el.value;
   var t = el.getAttribute('data-trv');
+  if (t === 'person' && (el.tagName || '').toUpperCase() === 'SELECT') { trvPersonPick(v); return; }
   if (t) { if (str(rep[t]) !== str(v)) travelSetField(t, v); return; }
   var pf = el.getAttribute('data-trv-purpose-field');
   if (pf) {
@@ -6241,6 +6297,7 @@ function trvEnterMove(e) {
   var ri = rf ? Number(el.getAttribute('data-i')) : -1;
   var lastCell = ri >= 0 && ((staff && rf === 'note') || (!staff && rf === 'people'));
   var firstKey = travAmounts(rep)[0].key;
+  var personCustom = tag === 'SELECT' && el.getAttribute('data-trv') === 'person' && el.value === '__custom__';
   var list = null, idx = -1, nextSel = '';
   if (!lastCell) {
     list = trvEnterFields();
@@ -6251,7 +6308,7 @@ function trvEnterMove(e) {
   e.preventDefault();
   trvCommitBeforeEnter(el);
   if (!lastCell) {
-    trvFocusSelector(nextSel);
+    trvFocusSelector(personCustom ? '[data-trv="person"]' : nextSel);
     return true;
   }
   var cur = travelCur();
@@ -7127,6 +7184,7 @@ var VENDOR_STATUS = {
   billing: { label: '청구 진행중', cls: 'orange' },
   paid: { label: '지급 완료', cls: 'green' }
 };
+var VENDOR_STATUS_ORDER = ['unpaid', 'billing', 'paid'];
 
 function emptyVendor() { return { version: 1, items: [] }; }
 
@@ -7198,12 +7256,9 @@ function vendorStatus(x) {
   return 'unpaid';
 }
 function vendorStatusMatch(x, want) {
-  if (!want || want === 'all') return true;
-  var c = vendorCalc(x);
-  if (want === 'paid') return c.S <= 0.5;
-  if (want === 'billing') return c.S > 0.5 && c.T > 0.5;
-  if (want === 'unpaid') return c.S > 0.5;
-  return true;
+  var sel = arr(want).filter(function (k) { return !!VENDOR_STATUS[k]; });
+  if (!sel.length || sel.length >= VENDOR_STATUS_ORDER.length) return true;
+  return sel.indexOf(vendorStatus(x)) >= 0;
 }
 function vxWon(n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; }
 function vxWonNum(n) { return Number(Math.round(n || 0)).toLocaleString('ko-KR'); }
@@ -7278,13 +7333,34 @@ function vendorById(id) { return byId(vendor.items, id); }
 
 /* ---------------- 목록 · 필터 ---------------- */
 function vendorFilterState() {
-  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', status: 'all' };
+  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
   var f = ui.vendor;
   if (typeof f.q !== 'string') f.q = '';
   if (typeof f.project !== 'string') f.project = 'all';
   if (typeof f.vendor !== 'string') f.vendor = 'all';
-  if (typeof f.status !== 'string') f.status = 'all';
+  /* 예전 단일 선택(status) 값이 남아 있으면 다중 선택 목록으로 옮긴다 */
+  if (!Array.isArray(f.statuses)) {
+    f.statuses = (typeof f.status === 'string' && f.status !== 'all' && VENDOR_STATUS[f.status]) ? [f.status] : [];
+    f.status = 'all';
+  }
+  f.statuses = f.statuses.filter(function (k, i, a) { return !!VENDOR_STATUS[k] && a.indexOf(k) === i; });
   return f;
+}
+/* 켜진 상태 목록. 아무것도 없거나 전부 켜져 있으면 빈 목록(= 전체)으로 본다 */
+function vendorStatusSelected() {
+  var s = [];
+  arr(vendorFilterState().statuses).forEach(function (k) { if (VENDOR_STATUS[k] && s.indexOf(k) < 0) s.push(k); });
+  if (s.length >= VENDOR_STATUS_ORDER.length) s = [];
+  return s;
+}
+function vendorStatusCounts(list) {
+  var c = { all: list.length, unpaid: 0, billing: 0, paid: 0 };
+  list.forEach(function (x) {
+    var st = vendorStatus(x);
+    if (c[st] === undefined) c[st] = 0;
+    c[st] += 1;
+  });
+  return c;
 }
 function vendorProjectList() {
   var map = {}, out = [];
@@ -7324,17 +7400,20 @@ function vendorSorted(list) {
     return av < bv ? -1 : av > bv ? 1 : 0;
   });
 }
-function vendorFiltered() {
+function vendorBaseList() {
   var f = vendorFilterState();
   var q = str(f.q).trim().toLowerCase();
-  var list = vendor.items.filter(function (x) {
+  return vendor.items.filter(function (x) {
     if (f.project !== 'all' && str(x.code).trim() !== f.project) return false;
     if (f.vendor !== 'all' && str(x.vendor).trim() !== f.vendor) return false;
-    if (!vendorStatusMatch(x, f.status)) return false;
     if (!q) return true;
     var hay = [x.code, x.name, x.vendor, x.submit, x.warrantyNo, x.date1, x.date2, x.date3].join(' ').toLowerCase();
     return hay.indexOf(q) >= 0;
   });
+}
+function vendorFiltered() {
+  var sel = vendorStatusSelected();
+  var list = vendorBaseList().filter(function (x) { return vendorStatusMatch(x, sel); });
   return vendorSorted(list);
 }
 function vendorTotals(list) {
@@ -7367,6 +7446,22 @@ function vxFilterSelect(name, label, pairs, current) {
     }).join('')
     + '</select></label>';
 }
+function vendorStatusChips() {
+  var sel = vendorStatusSelected();
+  var counts = vendorStatusCounts(vendorBaseList());
+  var allOn = !sel.length;
+  var html = '<div class="vx-status">'
+    + '<span class="vx-status-label" id="vxStatusLabel">상태 필터 <em>' + (allOn ? '전체 보기' : sel.length + '개 선택') + '</em></span>'
+    + '<div class="vx-chips" role="group" aria-labelledby="vxStatusLabel" aria-label="상태 필터 (여러 개 동시 선택)">'
+    + '<button type="button" class="vx-chip all' + (allOn ? ' on' : '') + '" data-action="vendor-status-all" aria-pressed="' + (allOn ? 'true' : 'false') + '">전체 <span class="n">' + counts.all + '</span></button>';
+  VENDOR_STATUS_ORDER.forEach(function (k) {
+    var on = sel.indexOf(k) >= 0;
+    html += '<button type="button" class="vx-chip ' + VENDOR_STATUS[k].cls + (on ? ' on' : '') + '" data-action="vendor-status" data-status="' + k + '" aria-pressed="' + (on ? 'true' : 'false') + '" title="' + esc(VENDOR_STATUS[k].label) + '만 보기 (다시 누르면 해제)">'
+      + '<i class="dot"></i>' + esc(VENDOR_STATUS[k].label) + ' <span class="n">' + counts[k] + '</span></button>';
+  });
+  html += '</div></div>';
+  return html;
+}
 function vendorFilters() {
   var f = vendorFilterState();
   var seenCode = {}, codePairs = [];
@@ -7378,11 +7473,10 @@ function vendorFilters() {
   });
   var projects = [['all', '전체 프로젝트']].concat(codePairs);
   var vendors = [['all', '전체 상호']].concat(vendorVendorList().map(function (v) { return [v, v]; }));
-  var statuses = [['all', '전체 상태'], ['unpaid', '미지급 잔액 있음'], ['billing', '청구 진행중'], ['paid', '지급 완료']];
   return '<div class="vx-filters">'
+    + vendorStatusChips()
     + vxFilterSelect('project', '프로젝트', projects, f.project)
     + vxFilterSelect('vendor', '상호', vendors, f.vendor)
-    + vxFilterSelect('status', '상태', statuses, f.status)
     + '<label class="vx-q">검색'
     + '<input id="vendorSearch" type="search" value="' + esc(f.q) + '" placeholder="공사명·상호·상신일 검색" autocomplete="off">'
     + '</label>'
@@ -7464,8 +7558,10 @@ function viewVendor() {
     + '</div>'
     + '<div class="table-card">'
     + vendorFilters()
-    + (f.q || f.project !== 'all' || f.vendor !== 'all' || f.status !== 'all'
-      ? '<div class="vx-filter-note">전체 ' + all.count + '건 중 ' + t.count + '건 표시 · 총 계약금 ' + vxWon(t.D) + ' / 지급 ' + vxWon(t.Q) + ' / 잔액 ' + vxWon(t.S) + ' <button class="link" type="button" data-action="vendor-reset-filter">필터 초기화</button></div>'
+    + (f.q || f.project !== 'all' || f.vendor !== 'all' || vendorStatusSelected().length
+      ? '<div class="vx-filter-note">전체 ' + all.count + '건 중 ' + t.count + '건 표시 · 총 계약금 ' + vxWon(t.D) + ' / 지급 ' + vxWon(t.Q) + ' / 잔액 ' + vxWon(t.S)
+        + (vendorStatusSelected().length ? ' · 상태 ' + vendorStatusSelected().map(function (k) { return VENDOR_STATUS[k].label; }).join(' + ') : '')
+        + ' <button class="link" type="button" data-action="vendor-reset-filter">필터 초기화</button></div>'
       : '<div class="vx-filter-note">' + (vendor.items.length ? '전체 ' + all.count + '건 · 총 계약금 ' + vxWon(all.D) + ' · 지급 ' + vxWon(all.Q) + ' · 잔액 ' + vxWon(all.S) : '아직 불러온 내역이 없습니다.') + '</div>')
     + vendorTable(list)
     + '</div>'
@@ -7683,14 +7779,33 @@ function vendorDelete(id) {
   });
 }
 function vendorResetFilter() {
-  ui.vendor = { q: '', project: 'all', vendor: 'all', status: 'all' };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
+  render();
+}
+/* 상태 칭 토글: 여러 개를 동시에 켜고 끌 수 있다 */
+function vendorToggleStatus(key) {
+  if (!VENDOR_STATUS[key]) return;
+  var f = vendorFilterState();
+  var cur = vendorStatusSelected();
+  var next;
+  if (!cur.length) next = [key];                              /* 전체 → 그 상태만 보기 */
+  else if (cur.indexOf(key) >= 0) next = cur.filter(function (k) { return k !== key; });  /* 끄기: 다 끄면 전체 */
+  else {
+    next = VENDOR_STATUS_ORDER.filter(function (k) { return cur.indexOf(k) >= 0 || k === key; });
+    if (next.length >= VENDOR_STATUS_ORDER.length) next = [];  /* 모두 켜면 전체와 같다 */
+  }
+  f.statuses = next;
+  render();
+}
+function vendorStatusAll() {
+  vendorFilterState().statuses = [];
   render();
 }
 
 /* ---------------- 원본 데이터 불러오기 ---------------- */
 function vendorApplyItems(items, label) {
   vendor.items = normalizeVendorItems(items);
-  ui.vendor = { q: '', project: 'all', vendor: 'all', status: 'all' };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
   saveVendor(); render();
   toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.');
 }
@@ -8228,7 +8343,7 @@ function resetAll() {
       ui.travelId = null;
       vendor = emptyVendor();
       try { window.localStorage.removeItem(VENDOR_KEY); } catch (e) { }
-      ui.vendor = { q: '', project: 'all', vendor: 'all', status: 'all' };
+      ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
       clearAllSel();
       ui.view = 'dashboard';
       render();
@@ -8413,6 +8528,8 @@ document.addEventListener('click', function (e) {
     case 'vendor-export': exportVendorXlsx(); break;
     case 'vendor-csv': exportVendorCSV(); break;
     case 'vendor-reset-filter': vendorResetFilter(); break;
+    case 'vendor-status': vendorToggleStatus(el.getAttribute('data-status')); break;
+    case 'vendor-status-all': vendorStatusAll(); break;
     case 'travel-add-purpose': travelAddPurpose(); break;
     case 'travel-del-purpose': travelDelPurpose(Number(el.getAttribute('data-i'))); break;
     case 'travel-add-row': travelAddRow(false); break;
@@ -8425,6 +8542,7 @@ document.addEventListener('click', function (e) {
     case 'travel-person-save': travelPersonSave(); break;
     case 'travel-person-cancel': ui.travelPeopleEditId = ''; travelPeopleModalRefresh(); break;
     case 'travel-person-del': travelPersonDelete(id); break;
+    case 'travel-person-list': trvPersonManualOn(false); break;
     case 'travel-people-reset': travelPeopleReset(); break;
     case 'export-json': exportJSON(); break;
     case 'import-json': {
@@ -8482,7 +8600,7 @@ document.addEventListener('change', function (e) {
     ui.travelNewType = el.value === TRAVEL_TYPE_STAFF ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
     return;
   }
-  if (el.getAttribute && el.getAttribute('data-trv-person-pick') !== null) { travelApplyPerson(el.value); return; }
+  if (el.getAttribute && el.getAttribute('data-trv') === 'person' && (el.tagName || '').toUpperCase() === 'SELECT') { trvPersonPick(el.value); return; }
   var pick = el.getAttribute ? el.getAttribute('data-trv-purpose-pick') : null;
   if (pick !== null && pick !== undefined && pick !== '') { travelPickPurpose(Number(pick), el.value); return; }
   var rowPickPrj = el.getAttribute ? el.getAttribute('data-trv-row-pick') : null;
@@ -8513,13 +8631,7 @@ document.addEventListener('focusout', function (e) {
   if (!el || el.nodeType !== 1 || !el.getAttribute) return;
   if ((el.tagName || '').toUpperCase() !== 'INPUT') return;
   if (!el.closest || !el.closest('.trv-editor')) return;
-  if (el.getAttribute('data-trv') === 'person') {
-    /* 바로 옆 출장자 선택 상자로 넘어가는 중이면 상자 목록을 건드리지 않는다 */
-    var act = document.activeElement;
-    if (act && act.getAttribute && act.getAttribute('data-trv-person-pick') !== null) return;
-    trvPersonPickRefresh();
-    return;
-  }
+  if (el.getAttribute('data-trv') === 'person') { trvPersonManualCommit(); return; }
   var pf = el.getAttribute('data-trv-purpose-field');
   if (pf) { travelSyncPurposeProject(Number(el.getAttribute('data-i'))); return; }
   var rf = el.getAttribute('data-trv-row-field');
@@ -8532,6 +8644,7 @@ document.addEventListener('input', function (e) {
     var vxField = el.getAttribute('data-vx');
     if (vxField) { vendorFormCalc(el.form); return; }
     var tField = el.getAttribute('data-trv');
+    if (tField === 'person' && (el.tagName || '').toUpperCase() === 'SELECT') return;  /* 목록 선택은 change 에서 처리 */
     if (tField) { travelSetField(tField, el.value); return; }
     var pField = el.getAttribute('data-trv-purpose-field');
     if (pField) { travelSetPurposeField(Number(el.getAttribute('data-i')), pField, el.value); return; }
