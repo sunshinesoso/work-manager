@@ -5092,6 +5092,7 @@ function travelListRow(rep, cur) {
     + '<td class="num" style="text-align:right;font-weight:800">' + won(t.total) + '</td>'
     + '<td style="text-align:right">' + (travIsStaff(rep) ? '<span class="muted">-</span>' : t.people + '명') + '</td>'
     + '<td><div class="actions">'
+    + '<button class="icon-sm" data-action="travel-json" data-id="' + rep.id + '" aria-label="JSON 파일 저장" title="이 정산서를 JSON 파일로 저장">' + icon('save', 15) + '</button>'
     + '<button class="icon-sm" data-action="travel-dup" data-id="' + rep.id + '" aria-label="복제">' + icon('copy', 15) + '</button>'
     + '<button class="icon-sm danger" data-action="travel-del" data-id="' + rep.id + '" aria-label="삭제">' + icon('trash', 15) + '</button>'
     + '</div></td></tr>';
@@ -5104,6 +5105,7 @@ function travelListCard(reports, cur) {
       + '<div class="empty-desc">새 정산서를 만들거나, 샘플을 불러와 바로 사용할 수 있습니다. 일용직은 홍영익 소장 10월 정산서, 상용직은 이병철 이사 정산서 샘플입니다.</div>'
       + '<div class="trv-empty-actions">'
       + '<button class="btn btn-primary btn-sm" data-action="travel-new">' + icon('plus', 15) + ' 새 정산서</button>'
+      + '<button class="btn btn-ghost btn-sm" data-action="travel-import">' + icon('upload', 15) + ' 정산서 불러오기</button>'
       + '<button class="btn btn-ghost btn-sm" data-action="travel-sample">' + icon('download', 15) + ' 샘플 불러오기</button>'
       + '</div></div></div>';
   }
@@ -5134,6 +5136,7 @@ function travelEditorHead(rep, t) {
     + travTypeBadge(rep)
     + '<button class="btn btn-ghost btn-sm" data-action="travel-back">' + icon('chevron-left', 15) + ' 목록</button>'
     + '<button class="btn btn-ghost btn-sm" data-action="travel-dup" data-id="' + rep.id + '">' + icon('copy', 15) + ' 복제</button>'
+    + '<button class="btn btn-ghost btn-sm" data-action="travel-json" data-id="' + rep.id + '" title="이 정산서 1건만 JSON 파일로 저장">' + icon('save', 15) + ' 파일 저장</button>'
     + '<button class="btn btn-primary btn-sm" data-action="travel-export" data-id="' + rep.id + '">' + icon('download', 15) + ' 엑셀 내보내기</button>'
     + '</div></div>';
 }
@@ -5474,6 +5477,280 @@ function travelLoadSample(type) {
   saveTravel();
   render();
   toast((travIsStaff(rep) ? '이병철 이사 상용직' : '홍영익 소장 일용직') + ' 정산서 샘플을 불러왔습니다. 총액 ' + won(trvTotals(rep).total));
+}
+
+/* ---------------- 정산서 건별 파일 저장 / 불러오기 ---------------- */
+/* 저장 형식: { format: 'work_manager_travel_expense_v1', item: { ...정산서 1건 } }
+   불러오기는 정산서 1건, 정산서 배열, 백업 파일 안의 정산서 목록을 모두 받아
+   기존 업무·프로젝트·현장·노무비·업체 결제·기존 정산서는 그대로 두고 목록 맨 위에 더한다. */
+var TRAVEL_EXPORT_FORMAT = 'work_manager_travel_expense_v1';
+var TRAVEL_IMPORT_ACCEPT = '.json,application/json,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+function trvDateRangeDots(rep) {
+  var d = trvDates(rep);
+  return d.length ? (trvDot(d[0]) + '~' + trvDot(d[d.length - 1])) : trvDot(todayISO());
+}
+function trvJsonFileName(rep) {
+  var who = trvPersonBare(rep) || '출장비';
+  return '출장비정산서_' + travelTypeLabel(rep) + '_' + who + '_' + trvDateRangeDots(rep) + '.json';
+}
+function travelExportJson(id) {
+  var rep = travelReport(id || ui.travelId);
+  if (!rep) { toast('저장할 정산서를 선택해 주세요.', 'alert'); return; }
+  var payload = {
+    format: TRAVEL_EXPORT_FORMAT,
+    app: '건설업 업무관리 시스템',
+    kind: 'travel_expense',
+    exportedAt: new Date().toISOString(),
+    item: rep
+  };
+  var name = trvJsonFileName(rep);
+  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }), name);
+  toast('정산서 1건을 JSON 파일로 저장했습니다. (' + name + ') 총액 ' + won(trvTotals(rep).total));
+}
+function travelPickFile() {
+  var fi = document.getElementById('travelImportFile');
+  if (!fi) return;
+  fi.value = '';
+  fi.click();
+}
+function trvImportReportLike(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+  if (Array.isArray(o.rows)) return true;
+  return !!(str(o.person).trim() || str(o.type).trim() || str(o.writtenAt).trim());
+}
+/* 파일 안에서 정산서 1건(들)을 꺼낸다 */
+function travelImportCandidates(parsed) {
+  var out = [];
+  function take(v) { if (trvImportReportLike(v)) out.push(v); }
+  function walk(v) {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (trvImportReportLike(v)) { out.push(v); return; }
+    take(v.item);
+    arr(v.items).forEach(take);
+    arr(v.reports).forEach(take);
+    if (v.travel) arr(v.travel.reports).forEach(take);
+  }
+  walk(parsed);
+  return out;
+}
+function travelImportReports(rawList, label) {
+  var added = [], used = {};
+  arr(rawList).forEach(function (raw) {
+    var rep = null;
+    try { rep = normTravelReport(JSON.parse(JSON.stringify(raw))); } catch (e) { rep = null; }
+    if (!rep) return;
+    if (!arr(rep.rows).length) rep.rows = [emptyTravelRow(todayISO())];
+    var id = str(rep.id);
+    if (!/^[A-Za-z0-9_-]{1,48}$/.test(id) || byId(travel.reports, id) || used[id]) rep.id = uid('trv');
+    used[rep.id] = true;
+    if (!str(rep.createdAt).trim()) rep.createdAt = new Date().toISOString();
+    added.push(rep);
+  });
+  if (!added.length) { toast('불러올 출장비 정산서를 찾지 못했습니다.', 'alert'); return 0; }
+  travel.reports = added.concat(travel.reports);
+  ui.travelTab = 'write';
+  ui.travelId = added[0].id;
+  ui.travelNewType = travIsStaff(added[0]) ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY;
+  saveTravel();
+  render();
+  var tot = 0;
+  added.forEach(function (r) { tot += trvTotals(r).total; });
+  var who = added.length === 1
+    ? (trvPersonBare(added[0]) || '이름 없음') + ' ' + travelTypeLabel(added[0]) + ' 정산서'
+    : '출장비 정산서 ' + added.length + '건';
+  toast(who + '를 목록 맨 위에 추가했습니다. 총액 ' + won(tot) + ' · 기존 자료는 그대로입니다.');
+  return added.length;
+}
+function travelImportJsonFile(file) {
+  var reader = new FileReader();
+  reader.onload = function () {
+    var parsed = null;
+    try { parsed = JSON.parse(String(reader.result)); } catch (e) { parsed = null; }
+    if (!parsed) { toast('JSON 파일을 읽지 못했습니다. 파일 내용을 확인해 주세요.', 'alert'); return; }
+    var list = travelImportCandidates(parsed);
+    if (!list.length) { toast('출장비 정산서 파일이 아닙니다. (정산서 1건 또는 정산서 목록 JSON)', 'alert'); return; }
+    travelImportReports(list, file.name);
+  };
+  reader.onerror = function () { toast('파일을 읽지 못했습니다.', 'alert'); };
+  reader.readAsText(file);
+}
+
+/* ---- 엑셀(xlsx) 정산서 읽기: 앱에서 내보낸 상용직/일용직 양식을 다시 읽는다 ---- */
+function trvXlsxSerialISO(n) {
+  n = Number(n);
+  if (!isFinite(n) || n < 20000 || n > 80000) return '';
+  var d = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 86400000);
+  return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+}
+function trvXlsxSheetFile(zip) {
+  var direct = zip.file('xl/worksheets/sheet1.xml');
+  if (direct) return direct;
+  var found = null;
+  zip.forEach(function (path) {
+    if (!found && /^xl\/worksheets\/sheet\d+\.xml$/.test(path)) found = path;
+  });
+  return found ? zip.file(found) : null;
+}
+function trvXlsxCellMap(doc, shared) {
+  var map = {};
+  var cs = doc.getElementsByTagName('c');
+  for (var i = 0; i < cs.length; i++) {
+    var ref = str(cs[i].getAttribute('r'));
+    if (ref) map[ref] = { el: cs[i], shared: shared };
+  }
+  return map;
+}
+function trvXlsxText(map, ref) {
+  var c = map[ref];
+  if (!c) return '';
+  return str(vxCellText(c.el, c.shared)).replace(/\s+/g, ' ').trim();
+}
+function trvXlsxAmount(map, ref) {
+  var c = map[ref];
+  if (!c) return '';
+  var f = c.el.getElementsByTagName('f')[0];
+  if (f) {
+    var fs = trvRaw(str(f.textContent));
+    if (fs && /[+\-*/]/.test(fs) && trvIsExpr(fs)) return fs;
+  }
+  var v = c.el.getElementsByTagName('v')[0];
+  if (!v) return '';
+  var raw = str(v.textContent).trim();
+  if (!raw) return '';
+  if (c.el.getAttribute('t') === 's') return trvXlsxText(map, ref);
+  var n = Number(raw);
+  return isFinite(n) ? String(Math.round(n * 100) / 100) : raw;
+}
+function trvXlsxDate(map, ref) {
+  var c = map[ref];
+  if (!c) return '';
+  var t = c.el.getAttribute('t') || '';
+  if (t === 's' || t === 'inlineStr' || t === 'str') {
+    var txt = trvXlsxText(map, ref);
+    var m = /^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/.exec(txt);
+    if (m) return m[1] + '-' + pad2(Number(m[2])) + '-' + pad2(Number(m[3]));
+    return isISODate(txt) ? txt : '';
+  }
+  var v = c.el.getElementsByTagName('v')[0];
+  var raw = v ? str(v.textContent).trim() : '';
+  if (!raw) return '';
+  if (isISODate(raw)) return raw;
+  if (/^\d{5}(\.\d+)?$/.test(raw)) return trvXlsxSerialISO(Number(raw));
+  return '';
+}
+function trvXlsxToReport(map) {
+  var staffPerson = trvXlsxText(map, 'U10');
+  var dailyPerson = trvXlsxText(map, 'Z13');
+  var staffHint = (staffPerson ? 2 : 0) + (trvXlsxText(map, 'E10') ? 1 : 0)
+    + (trvXlsxDate(map, 'P8') ? 1 : 0) + (trvXlsxDate(map, 'B25') ? 1 : 0);
+  var dailyHint = (dailyPerson ? 2 : 0) + (trvXlsxText(map, 'E13') ? 1 : 0)
+    + (trvXlsxDate(map, 'B36') ? 1 : 0);
+  var staff = staffHint >= dailyHint;
+  var rep = emptyTravelReport(staff ? TRAVEL_TYPE_STAFF : TRAVEL_TYPE_DAILY);
+  var rows = [];
+  var i, row, o;
+  if (staff) {
+    rep.writtenAt = trvXlsxDate(map, 'P8');
+    rep.dept = trvXlsxText(map, 'E10') || '공사관리팀';
+    rep.duty = trvXlsxText(map, 'M10') || '이 사';
+    rep.person = staffPerson;
+    rep.purposeText = trvXlsxText(map, 'E12');
+    rep.carNo = trvXlsxText(map, 'E16');
+    rep.card4 = trvXlsxText(map, 'S16').replace(/[^0-9]/g, '').slice(0, 4);
+    rep.code = trvXlsxText(map, 'E17');
+    var q = trvXlsxText(map, 'Q19'), tn = trvXlsxText(map, 'T19');
+    if (tn.indexOf('■') >= 0 && q.indexOf('■') < 0) rep.kind = TRAVEL_KIND_CARD;
+    else if (q.indexOf('■') >= 0 && tn.indexOf('■') < 0) rep.kind = TRAVEL_KIND_CASH;
+    rep.advance = trvXlsxAmount(map, 'E20');
+    rep.attach = trvXlsxText(map, 'A51') || TRAVEL_STAFF_ATTACH_DEFAULT;
+    rep.kmRate = trvXlsxAmount(map, 'AA23') || '250';
+    rep.kmFrom = trvXlsxAmount(map, 'AD23');
+    rep.kmTo = trvXlsxAmount(map, 'AE23');
+    for (i = 0; i < TRAVEL_STAFF_MAX_ROWS; i++) {
+      row = 25 + i;
+      o = emptyTravelRow(trvXlsxDate(map, 'B' + row));
+      TRAVEL_STAFF_AMOUNTS.forEach(function (f) { o[f.key] = trvXlsxAmount(map, f.col + row); });
+      o.no = trvXlsxText(map, 'P' + row);
+      o.client = trvXlsxText(map, 'R' + row);
+      o.note = trvXlsxText(map, 'U' + row);
+      rows.push(o);
+    }
+  } else {
+    rep.dept = trvXlsxText(map, 'E13') || '공사관리팀';
+    rep.duty = trvXlsxText(map, 'N13') || '소   장';
+    rep.person = dailyPerson;
+    rep.card4 = trvXlsxText(map, 'X29').replace(/[^0-9]/g, '').slice(0, 4);
+    var ab = trvXlsxText(map, 'AB30'), bc = trvXlsxText(map, 'BC12');
+    if (ab.indexOf('■') >= 0 && bc.indexOf('■') < 0) rep.kind = TRAVEL_KIND_CARD;
+    else if (bc.indexOf('■') >= 0 && ab.indexOf('■') < 0) rep.kind = TRAVEL_KIND_CASH;
+    rep.advance = trvXlsxAmount(map, 'F31');
+    rep.km = trvXlsxAmount(map, 'Y32');
+    rep.kmRate = trvXlsxAmount(map, 'AA32') || '250';
+    rep.code = trvXlsxText(map, 'N29');
+    rep.attach = trvXlsxText(map, 'C75') || TRAVEL_ATTACH_DEFAULT;
+    rep.workers = trvXlsxText(map, 'C76');
+    var purposes = [];
+    for (i = 0; i < TRAVEL_MAX_PURPOSES; i++) {
+      row = 17 + i;
+      var p = { no: trvXlsxText(map, 'E' + row), client: trvXlsxText(map, 'H' + row), work: trvXlsxText(map, 'N' + row) };
+      if (p.no || p.client || p.work) purposes.push(p);
+    }
+    rep.purposes = purposes.length ? purposes.slice(0, TRAVEL_MAX_PURPOSES) : [{ no: '', client: '', work: '' }];
+    for (i = 0; i < TRAVEL_MAX_ROWS; i++) {
+      row = 36 + i;
+      o = emptyTravelRow(trvXlsxDate(map, 'B' + row));
+      TRAVEL_AMOUNTS.forEach(function (f) { o[f.key] = trvXlsxAmount(map, f.col + row); });
+      o.no = trvXlsxText(map, 'V' + row);
+      o.people = trvNum(trvXlsxAmount(map, 'AD' + row));
+      rows.push(o);
+    }
+  }
+  var kept = rows.filter(trvRowHas).map(normTravelRow);
+  if (!kept.length) return null;
+  rep.rows = kept.slice(0, travMaxRows(rep));
+  return normTravelReport(rep);
+}
+function travelParseXlsx(buf) {
+  return window.JSZip.loadAsync(buf).then(function (zip) {
+    var sheetFile = trvXlsxSheetFile(zip);
+    if (!sheetFile) throw new Error('엑셀 시트를 찾지 못했습니다.');
+    var sharedP = zip.file('xl/sharedStrings.xml')
+      ? zip.file('xl/sharedStrings.xml').async('string')
+      : Promise.resolve('');
+    return Promise.all([sheetFile.async('string'), sharedP]).then(function (parts) {
+      var shared = [];
+      if (parts[1]) {
+        var sdoc = vxParseXml(parts[1], '공유 문자열');
+        var sis = sdoc.getElementsByTagName('si');
+        for (var i = 0; i < sis.length; i++) {
+          var ts = sis[i].getElementsByTagName('t'), txt = '';
+          for (var k = 0; k < ts.length; k++) txt += ts[k].textContent;
+          shared.push(txt);
+        }
+      }
+      var doc = vxParseXml(parts[0], '시트');
+      return trvXlsxToReport(trvXlsxCellMap(doc, shared));
+    });
+  });
+}
+function travelImportXlsxFile(file) {
+  if (!window.JSZip) { toast('엑셀 기능을 불러오지 못했습니다. 페이지를 새로고침해 주세요.', 'alert'); return; }
+  toast('엑셀에서 출장비 정산서를 읽는 중입니다...');
+  vxReadFile(file).then(travelParseXlsx).then(function (rep) {
+    if (!rep) { toast('엑셀에서 정산서 내용을 찾지 못했습니다. 앱에서 내보낸 정산서 양식인지 확인해 주세요.', 'alert'); return; }
+    travelImportReports([rep], file.name);
+  }).catch(function (err) {
+    toast('엑셀을 읽지 못했습니다: ' + (err && err.message ? err.message : err), 'alert');
+  });
+}
+function travelImportFile(file) {
+  if (!file) return;
+  var name = str(file.name).toLowerCase();
+  if (/\.json$/.test(name) || (str(file.type).indexOf('json') >= 0 && !/\.xlsx$/.test(name))) { travelImportJsonFile(file); return; }
+  if (/\.xlsx$/.test(name)) { travelImportXlsxFile(file); return; }
+  toast('JSON 또는 엑셀(xlsx) 파일만 불러올 수 있습니다.', 'alert');
 }
 function travelSetField(name, value) {
   var rep = travelCur();
@@ -6281,8 +6558,10 @@ function viewTravel() {
     + '<label class="trv-type-pick"><span>유형</span><select id="travelNewType" aria-label="새 정산서 유형">'
     + options([[TRAVEL_TYPE_DAILY, '일용직 정산서'], [TRAVEL_TYPE_STAFF, '상용직 정산서']], newType)
     + '</select></label>'
+    + '<button class="btn btn-ghost" data-action="travel-import">' + icon('upload', 16) + ' 정산서 불러오기</button>'
     + '<button class="btn btn-ghost" data-action="travel-sample">' + icon('download', 16) + ' 샘플 불러오기</button>'
     + '<button class="btn btn-primary" data-action="travel-new">' + icon('plus', 16) + ' 새 정산서</button>'
+    + '<input type="file" id="travelImportFile" accept="' + TRAVEL_IMPORT_ACCEPT + '" hidden>'
     + '</div></div>';
   return travelTabs() + head + travelListCard(reports, cur) + (cur ? '<div style="height:16px"></div>' + travelEditor(cur) : '');
 }
@@ -7655,6 +7934,8 @@ document.addEventListener('click', function (e) {
     case 'travel-find-open': travelOpenFromFind(id); break;
     case 'travel-find-csv': exportTravelFindCSV(); break;
     case 'travel-sample': travelLoadSample(); break;
+    case 'travel-import': travelPickFile(); break;
+    case 'travel-json': travelExportJson(id); break;
     case 'travel-open': travelOpen(id); break;
     case 'travel-back': ui.travelId = null; render(); break;
     case 'travel-dup': travelDuplicate(id); break;
@@ -7698,6 +7979,11 @@ document.addEventListener('change', function (e) {
   }
   if (el.id === 'vendorImportFile') {
     if (el.files && el.files[0]) vendorImportFile(el.files[0]);
+    el.value = '';
+    return;
+  }
+  if (el.id === 'travelImportFile') {
+    if (el.files && el.files[0]) travelImportFile(el.files[0]);
     el.value = '';
     return;
   }
