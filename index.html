@@ -829,6 +829,10 @@ ul{margin:0;padding:0;list-style:none}
 .vx-money.due{color:#DC2626}
 .vx-money.clear{color:#0F766E}
 .vx-cell-sub{font-size:11px;color:#94A3B8;font-weight:600;margin-top:4px;line-height:1.4}
+.vx-cell-sub.vx-cell-tax{color:#7C8CA5;word-break:break-all;max-width:240px;margin-left:auto}
+.vx-cell-tax b{display:block;font-size:10px;font-weight:800;color:#A3AFC0;letter-spacing:.2px}
+.vx-cell-tax span{display:block;color:#64748B;font-weight:700}
+.vx-cell-tax i{font-style:normal;font-weight:800;color:#94A3B8;margin-right:3px}
 .vx-rate-cell{min-width:140px;padding-right:22px}
 .vx-progress{position:relative;height:7px;border-radius:99px;background:#EDF1F7;overflow:hidden;min-width:92px}
 .vx-progress>span{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:linear-gradient(90deg,#60A5FA,#2563EB)}
@@ -874,7 +878,18 @@ ul{margin:0;padding:0;list-style:none}
 .vx-preview{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;padding:12px 14px;border:1px solid #E3EAF4;border-radius:12px;background:#F7FAFF;font-size:12px;color:#475569}
 .vx-preview b{color:#0F1E36;font-weight:800;margin-left:3px}
 .vx-preview b.red{color:#DC2626}
-@media (max-width:640px){.vx-bar-right{margin-left:0;width:100%}.vx-bar .btn{flex:1 1 auto}}
+/* 지급 내역: 차수마다 지급액 · 지급일 · 세금계산서 승인번호를 한 줄에 */
+.vx-pay-rows{grid-column:1/-1;display:flex;flex-direction:column;gap:10px}
+.vx-pay-row{padding:11px 12px 12px;border:1px solid #E9EEF5;border-radius:12px;background:#FBFCFE}
+.vx-pay-head{display:flex;align-items:center;gap:7px;margin-bottom:8px;font-size:11.5px;font-weight:800;color:#475569;line-height:1.2}
+.vx-pay-head b{font-size:11px;font-weight:800;color:#1D4ED8;background:#EEF4FF;border:1px solid #DCE7FB;border-radius:999px;padding:2px 8px;line-height:1.25;white-space:nowrap}
+.vx-pay-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.vx-pay-grid .f label{font-size:11.5px}
+.vx-pay-grid input[name^="tax"]{letter-spacing:-.1px;font-variant-numeric:tabular-nums}
+.vx-legacy{grid-column:1/-1;margin-top:2px;padding:9px 12px;border:1px dashed #E2E8F0;border-radius:10px;background:#FCFCFD;font-size:11.5px;font-weight:700;color:#64748B;line-height:1.5}
+.vx-legacy b{color:#334155;font-weight:800;word-break:break-all}
+.vx-legacy span{display:block;font-size:11px;font-weight:600;color:#94A3B8;margin-top:2px}
+@media (max-width:640px){.vx-bar-right{margin-left:0;width:100%}.vx-bar .btn{flex:1 1 auto}.vx-pay-grid{grid-template-columns:1fr;gap:9px}.vx-pay-row{padding:10px 11px 11px}}
 /* 데스크톱: 상태 칩 + 프로젝트 + 상호 + 검색을 한 줄에 나란히 */
 @media (min-width:1200px){
   .vx-filters{display:flex;flex-wrap:nowrap;align-items:flex-end;gap:10px}
@@ -8363,6 +8378,11 @@ function vxEval(v) {
 }
 function vxNum(v) { var n = vxEval(v); return isFinite(n) ? n : 0; }
 function vxRound(n) { return Math.round(n * 100) / 100; }
+/* 글자 값(세금계산서 승인번호 등) — 숫자 변환·콤마 없이 그대로 둔다 */
+function vxText(v) {
+  if (v === null || v === undefined) return '';
+  return String(v).replace(/\r/g, '').trim();
+}
 /* 저장 형식: 숫자면 숫자, '50000000+40750000' 같은 식이면 식 그대로 */
 function vxAmount(v) {
   if (typeof v === 'number') return isFinite(v) ? vxRound(v) : null;
@@ -8431,6 +8451,31 @@ function vxRate(r) { return (Math.round((r || 0) * 1000) / 10).toFixed(1) + '%';
 function vxDateLine(v) {
   return str(v).split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; }).join(' · ');
 }
+/* 세금계산서 승인번호 한 줄 표기 — 차수별 승인번호를 · 로 이어 보여준다.
+   차수별 값이 없고 예전 자료의 tax 만 있으면 그것을 쓴다. */
+function vxTaxLine(x) {
+  x = x || {};
+  var list = [x.tax1, x.tax2, x.tax3].map(function (v) { return vxText(v); }).filter(function (v) { return v; });
+  if (!list.length) {
+    var legacy = vxText(x.tax);
+    if (legacy) list = [legacy.replace(/\n/g, ' ')];
+  }
+  return list.join(' · ');
+}
+/* 목록 표에 쓰는 차수별 세금계산서 승인번호 — 값이 있는 차수만 돌려준다 */
+function vxTaxLines(x) {
+  x = x || {};
+  var out = [];
+  [['1차', x.tax1], ['2차', x.tax2], ['3차', x.tax3]].forEach(function (p) {
+    var v = vxText(p[1]);
+    if (v) out.push({ tag: p[0], text: v });
+  });
+  if (!out.length) {
+    var legacy = vxText(x.tax);
+    if (legacy) out.push({ tag: '', text: legacy });
+  }
+  return out;
+}
 function vxMulti(v) {
   return esc(v).replace(/\n/g, '<br>');
 }
@@ -8457,7 +8502,11 @@ function normVendorItem(x) {
     billed: vxAmount(x.billed),
     submit: str(x.submit).trim().slice(0, 40),
     attach: str(x.attach).trim().slice(0, 40),
-    tax: vxAmount(x.tax),
+    tax: vxText(x.tax),
+    taxInvoice: vxText(x.taxInvoice),
+    tax1: vxText(x.tax1),
+    tax2: vxText(x.tax2),
+    tax3: vxText(x.tax3),
     warrantyNo: str(x.warrantyNo).replace(/\r/g, '').trim().slice(0, 120),
     updated: str(x.updated).trim().slice(0, 30)
   };
@@ -8588,7 +8637,7 @@ function vendorBaseList() {
     if (f.project !== 'all' && str(x.code).trim() !== f.project) return false;
     if (f.vendor !== 'all' && str(x.vendor).trim() !== f.vendor) return false;
     if (!q) return true;
-    var hay = [x.code, x.name, x.vendor, x.submit, x.warrantyNo, x.date1, x.date2, x.date3].join(' ').toLowerCase();
+    var hay = [x.code, x.name, x.vendor, x.submit, x.warrantyNo, x.date1, x.date2, x.date3, x.tax, x.tax1, x.tax2, x.tax3].join(' ').toLowerCase();
     return hay.indexOf(q) >= 0;
   });
 }
@@ -8660,7 +8709,7 @@ function vendorFilters() {
     + vxFilterSelect('project', '프로젝트', projects, f.project)
     + vxFilterSelect('vendor', '상호', vendors, f.vendor)
     + '<label class="vx-q">검색'
-    + '<input id="vendorSearch" type="search" value="' + esc(f.q) + '" placeholder="공사명·상호·상신일 검색" autocomplete="off">'
+    + '<input id="vendorSearch" type="search" value="' + esc(f.q) + '" placeholder="공사명·상호·상신일·승인번호 검색" autocomplete="off">'
     + '</label>'
     + '</div>';
 }
@@ -8682,6 +8731,7 @@ function vendorTable(list) {
     var barW = Math.max(0, Math.min(100, (Number(c.rate) || 0) * 100));
     var rateTxt = vxRate(c.rate);
     var billSub = c.T ? '청구 ' + vxWonNum(c.T) + ' · 청구후잔액 ' + vxWonNum(c.V) : '';
+    var taxes = vxTaxLines(x);
     return '<tr data-action="vendor-edit" data-id="' + x.id + '">'
       + '<td class="vx-proj">'
       + '<b>' + (vxMulti(x.name) || '<span class="muted">이름 없음</span>') + '</b>'
@@ -8691,7 +8741,11 @@ function vendorTable(list) {
       + '<td><span class="badge ' + meta.cls + '">' + meta.label + '</span></td>'
       + '<td class="num vx-money">' + vxWonNum(c.D) + '</td>'
       + '<td class="num vx-money">' + vxWonNum(c.Q)
-      + (dates ? '<div class="vx-cell-sub" style="text-align:right">지급일 ' + esc(dates) + '</div>' : '') + '</td>'
+      + (dates ? '<div class="vx-cell-sub" style="text-align:right">지급일 ' + esc(dates) + '</div>' : '')
+      + (taxes.length ? '<div class="vx-cell-sub vx-cell-tax" style="text-align:right" title="세금계산서 승인번호">'
+        + '<b>세금계산서</b>'
+        + taxes.map(function (t) { return '<span>' + (t.tag ? '<i>' + t.tag + '</i>' : '') + esc(t.text) + '</span>'; }).join('')
+        + '</div>' : '') + '</td>'
       + '<td class="num vx-money ' + (c.S > 0.5 ? 'due' : 'clear') + '">' + vxWonNum(c.S)
       + (billSub ? '<div class="vx-cell-sub" style="text-align:right">' + esc(billSub) + '</div>' : '') + '</td>'
       + '<td class="vx-rate-cell">'
@@ -8762,7 +8816,7 @@ function viewVendor() {
     + '</div>'
     + '<p class="labor-note">· 2026공사(공사팀) 시트 구조를 그대로 옮겼습니다. 지급금액·지급율·잔액·청구후잔액·하자증권 표시는 입력값으로 자동 계산됩니다.<br>'
     + '· 총계약금과 지급액 칸에는 <b>50000000+40750000</b>, <b>48000000*1.1</b> 같은 식을 넣을 수 있고, 엑셀 내보내기에도 수식으로 들어갑니다.<br>'
-    + '· 행을 누르면 수정 창이 열립니다. 지급일은 여러 날짜를 줄바꿈으로 넣을 수 있습니다.</p>';
+    + '· 행을 누르면 수정 창이 열립니다. 지급일은 여러 날짜를 줄바꿈으로 넣고, 세금계산서는 차수별 승인번호를 적습니다.</p>';
   return html;
 }
 
@@ -8775,6 +8829,21 @@ function vxVal(x, key) {
 function vxPctInput(v) {
   var p = vxPctFrac(v);
   return p == null ? '' : String(Math.round(p * 10000) / 100);
+}
+/* 지급 내역 한 차수 — 지급액 → 지급일 → 세금계산서(승인번호) 순서로 한 줄에 놓는다.
+   세금계산서는 금액이 아니라 승인번호라서 숫자·콤마 변환 없이 글자 그대로 다룬다. */
+function vxPayRow(no, label, i, d, amtPh, datePh) {
+  return '<div class="vx-pay-row">'
+    + '<div class="vx-pay-head"><b>' + no + '</b>' + label + '</div>'
+    + '<div class="vx-pay-grid">'
+    + '<div class="f"><label for="vxAmt' + i + '">지급액</label>'
+    + '<input id="vxAmt' + i + '" name="amt' + i + '" data-vx="1" value="' + esc(vxVal(d, 'amt' + i)) + '" placeholder="' + esc(amtPh) + '" autocomplete="off">'
+    + '<span class="vx-calc" data-vx-out="amt' + i + '"></span></div>'
+    + '<div class="f"><label for="vxDate' + i + '">지급일</label>'
+    + '<textarea id="vxDate' + i + '" name="date' + i + '" class="vx-date" rows="2" placeholder="' + datePh + '">' + esc(vxVal(d, 'date' + i)) + '</textarea></div>'
+    + '<div class="f"><label for="vxTax' + i + '">세금계산서 승인번호</label>'
+    + '<input id="vxTax' + i + '" name="tax' + i + '" type="text" maxlength="60" value="' + esc(vxVal(d, 'tax' + i)) + '" placeholder="예) 20261127-41000001-12345678" autocomplete="off" spellcheck="false">'
+    + '</div></div></div>';
 }
 function openVendorModal(id) {
   var x = id ? vendorById(id) : null;
@@ -8820,21 +8889,12 @@ function openVendorModal(id) {
     + '<span class="vx-calc" data-vx-out="pct3"></span></div>'
 
     + '<div class="vx-sec">지급 내역</div>'
-    + '<div class="f"><label>계약금 지급액</label>'
-    + '<input name="amt1" data-vx="1" value="' + esc(vxVal(d, 'amt1')) + '" placeholder="예) 50000000+40750000" autocomplete="off">'
-    + '<span class="vx-calc" data-vx-out="amt1"></span></div>'
-    + '<div class="f"><label>계약금 지급일</label>'
-    + '<textarea name="date1" class="vx-date" rows="2" placeholder="예) 2/13&#10;4/16">' + esc(vxVal(d, 'date1')) + '</textarea></div>'
-    + '<div class="f"><label>중도금 지급액</label>'
-    + '<input name="amt2" data-vx="1" value="' + esc(vxVal(d, 'amt2')) + '" placeholder="여러 번이면 60500000+60500000" autocomplete="off">'
-    + '<span class="vx-calc" data-vx-out="amt2"></span></div>'
-    + '<div class="f"><label>중도금 지급일</label>'
-    + '<textarea name="date2" class="vx-date" rows="2" placeholder="예) 8/10">' + esc(vxVal(d, 'date2')) + '</textarea></div>'
-    + '<div class="f"><label>잔금 지급액</label>'
-    + '<input name="amt3" data-vx="1" value="' + esc(vxVal(d, 'amt3')) + '" placeholder="여러 번이면 10000000+9800000" autocomplete="off">'
-    + '<span class="vx-calc" data-vx-out="amt3"></span></div>'
-    + '<div class="f"><label>잔금 지급일</label>'
-    + '<textarea name="date3" class="vx-date" rows="2" placeholder="예) 11/20">' + esc(vxVal(d, 'date3')) + '</textarea></div>'
+    + '<div class="vx-pay-rows">'
+    + vxPayRow('1차', '계약금', 1, d, '예) 50000000+40750000', '예) 2/13&#10;4/16')
+    + vxPayRow('2차', '중도금', 2, d, '여러 번이면 60500000+60500000', '예) 8/10')
+    + vxPayRow('3차', '잔금', 3, d, '여러 번이면 10000000+9800000', '예) 11/20')
+    + '</div>'
+    + (x && vxText(x.tax) ? '<div class="vx-legacy">이전 자료의 세금계산서 값: <b>' + esc(vxText(x.tax)) + '</b><span>지급 차수별 승인번호로 옮겨 적어 주세요. 이 값은 저장해도 그대로 보존됩니다.</span></div>' : '')
 
     + '<div class="vx-sec">청구 · 서류</div>'
     + '<div class="f"><label>청구건</label>'
@@ -8844,9 +8904,6 @@ function openVendorModal(id) {
     + '<input name="submit" maxlength="40" value="' + esc(vxVal(d, 'submit')) + '" placeholder="예) 완료 / 11/4" autocomplete="off"></div>'
     + '<div class="f"><label>첨부서류</label>'
     + '<input name="attach" maxlength="40" value="' + esc(vxVal(d, 'attach')) + '" placeholder="예) ○ / ⅹ" autocomplete="off"></div>'
-    + '<div class="f"><label>세금계산서</label>'
-    + '<input name="tax" data-vx="1" value="' + esc(vxVal(d, 'tax')) + '" placeholder="금액" autocomplete="off">'
-    + '<span class="vx-calc" data-vx-out="tax"></span></div>'
     + '<div class="f full"><label>하자증권번호 (천만원 초과)</label>'
     + '<input name="warrantyNo" maxlength="120" value="' + esc(vxVal(d, 'warrantyNo')) + '" placeholder="예) 서울보증 100-000-202606999472" autocomplete="off">'
     + '<span class="hint">총계약금이 1,100만원을 넘으면 하자증권 표시가 자동으로 계산됩니다. (○ 미제출 · ● 번호 입력됨 · ⅹ 해당 없음)</span></div>'
@@ -8883,7 +8940,6 @@ function vendorFormCalc(form) {
   moneyOut('amt2', g('amt2'), c.M);
   moneyOut('amt3', g('amt3'), c.O);
   moneyOut('billed', g('billed'), c.T);
-  moneyOut('tax', g('tax'), vxNum(g('tax')));
   var pl = [['pct1', c.E], ['pct2', c.G], ['pct3', c.I]];
   pl.forEach(function (p) {
     var raw = g(p[0]);
@@ -8910,7 +8966,7 @@ function saveVendorForm(form) {
   var id = form.getAttribute('data-id');
   var name = fv(form, 'name'), vname = fv(form, 'vendor');
   if (!name && !vname) return fieldError(form, 'name', '공사명이나 상호를 입력해 주세요.');
-  var checks = [['contract', '총계약금'], ['amt1', '계약금 지급액'], ['amt2', '중도금 지급액'], ['amt3', '잔금 지급액'], ['billed', '청구건'], ['tax', '세금계산서']];
+  var checks = [['contract', '총계약금'], ['amt1', '계약금 지급액'], ['amt2', '중도금 지급액'], ['amt3', '잔금 지급액'], ['billed', '청구건']];
   for (var i = 0; i < checks.length; i++) {
     var raw = fv(form, checks[i][0]);
     if (raw && !isFinite(vxEval(raw))) return fieldError(form, checks[i][0], checks[i][1] + '을 숫자나 더하기·곱하기 식으로 입력해 주세요.');
@@ -8932,7 +8988,9 @@ function saveVendorForm(form) {
     billed: vxAmount(fv(form, 'billed')),
     submit: fv(form, 'submit'),
     attach: fv(form, 'attach'),
-    tax: vxAmount(fv(form, 'tax')),
+    tax1: vxText(fv(form, 'tax1')),
+    tax2: vxText(fv(form, 'tax2')),
+    tax3: vxText(fv(form, 'tax3')),
     warrantyNo: fv(form, 'warrantyNo'),
     updated: vxToday()
   };
@@ -9243,7 +9301,7 @@ function vendorRowItem(cells) {
     amt1: expr('K'), amt2: expr('M'), amt3: expr('O'),
     date1: datev('L'), date2: datev('N'), date3: datev('P'),
     billed: expr('T'), submit: str(val('U')).trim(),
-    attach: str(val('W')).trim(), tax: numv('X'),
+    attach: str(val('W')).trim(), tax: str(val('X')).replace(/\r/g, '').trim(),
     warrantyNo: str(val('Z')).trim(), updated: str(val('AA')).trim()
   };
 }
@@ -9340,7 +9398,7 @@ function vendorExportRows(list) {
     rows.push([
       x.code, str(x.name).replace(/\n/g, ' '), x.vendor, c.D, c.E, Math.round(c.p1 * 10000) / 100, c.G, Math.round(c.p2 * 10000) / 100,
       c.I, Math.round(c.p3 * 10000) / 100, c.K, x.date1, c.M, x.date2, c.O, x.date3,
-      c.Q, Math.round(c.rate * 10000) / 100, c.S, c.T, x.submit, c.V, x.attach, vxNum(x.tax), c.warranty, x.warrantyNo, x.updated
+      c.Q, Math.round(c.rate * 10000) / 100, c.S, c.T, x.submit, c.V, x.attach, vxTaxLine(x), c.warranty, x.warrantyNo, x.updated
     ]);
   });
   return rows;
@@ -9434,7 +9492,7 @@ function vxBuildSheetXml(sheetXml, list) {
       + vxCell('U' + r, st('U'), x.submit)
       + vxCell('V' + r, st('V'), c.V, { formula: 'S' + r + '-T' + r })
       + vxCell('W' + r, st('W'), x.attach)
-      + vxCell('X' + r, st('X'), x.tax == null ? '' : vxNum(x.tax))
+      + vxCell('X' + r, st('X'), vxTaxLines(x).map(function (t) { return t.text; }).join('\n'))
       + vxCell('Y' + r, st('Y'), x.contract == null ? '' : c.warranty, { formula: 'IF(ISBLANK(D' + r + '),"",IF(D' + r + '>11000000,IF(ISBLANK(Z' + r + '),"○","●"),"ⅹ"))', str: true })
       + vxCell('Z' + r, st('Z'), x.warrantyNo)
       + vxCell('AA' + r, st('AA'), x.updated)
