@@ -3463,13 +3463,11 @@ function laborListSiteText(m) {
 }
 function viewLaborList() {
   var keys = laborLedgerKeys();
-  var sum = 0, compTotal = 0, workerTotal = 0;
+  var sum = 0;
   var rows = keys.map(function (k) {
     var m = labor.months[k];
     var t = laborTotals(m, k);
     sum += t.gross;
-    compTotal += m.companies.length;
-    workerTotal += m.rows.length;
     var chief = laborChiefName(m);
     var site = laborListSiteText(m);
     return '<tr data-action="labor-open" data-month="' + esc(k) + '">'
@@ -3488,7 +3486,7 @@ function viewLaborList() {
   }).join('');
   var head = '<div class="view-head"><div class="view-head-text">'
     + '<p class="view-sub">' + (keys.length
-      ? '저장된 월별 대장 ' + keys.length + '개 · 공사 ' + compTotal + '건 · 투입 근로자 ' + workerTotal + '명 · 총 노무비 ' + won(sum)
+      ? '저장된 월별 대장 ' + keys.length + '개 · 총 노무비 ' + won(sum)
       : '월별로 공사·근로자·출근부를 기록하고 엑셀 양식으로 내보낼 수 있습니다.')
     + '</p></div><div class="head-actions" style="margin-left:auto">'
     + '<button class="btn btn-primary" data-action="labor-new">' + icon('plus', 16) + ' 노무비 대장 작성</button>'
