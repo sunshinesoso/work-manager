@@ -4092,8 +4092,10 @@ function viewLaborFind() {
 }
 function setLaborTab(tab) {
   if (tab !== 'ledger' && tab !== 'find') return;
+  if (tab === ui.laborTab) return;
   ui.laborTab = tab;
   if (tab === 'find') laborFindState();
+  else ui.laborEditing = false;
   render();
   try { window.scrollTo(0, 0); } catch (e) { }
 }
