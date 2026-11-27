@@ -7874,14 +7874,14 @@ function vendorTable(list) {
   var sortMode = vendorFilterState().sort;
   var sortIc = sortMode === 'rate-asc' ? '↑' : sortMode === 'rate-desc' ? '↓' : '↕';
   var sortAria = sortMode === 'rate-asc'
-    ? '지급율 오름차순으로 정렬됨. 다시 누르면 내림차순'
+    ? '지급율 오름차순 정렬됨. 다시 누르면 내림차순'
     : sortMode === 'rate-desc'
-      ? '지급율 내림차순으로 정렬됨. 다시 누르면 기본 순서'
+      ? '지급율 내림차순 정렬됨. 다시 누르면 기본 순서'
       : '지급율 정렬 안 됨. 누르면 오름차순';
   var sortTh = '<th class="num vx-sort-th" aria-sort="'
     + (sortMode === 'rate-asc' ? 'ascending' : sortMode === 'rate-desc' ? 'descending' : 'none') + '">'
     + '<button type="button" class="vx-sort' + (sortMode ? ' on' : '') + '" data-action="vendor-sort-rate"'
-    + ' title="' + esc(sortAria) + '" aria-label="지급율 ' + esc(sortAria) + '">지급율<span class="ic" aria-hidden="true">' + sortIc + '</span></button></th>';
+    + ' title="' + esc(sortAria) + '" aria-label="' + esc(sortAria) + '">지급율<span class="ic" aria-hidden="true">' + sortIc + '</span></button></th>';
   return '<div class="table-scroll"><table class="labor-table vx-table">'
     + '<thead><tr>'
     + '<th>프로젝트</th><th>공사명</th><th>상호</th>'
