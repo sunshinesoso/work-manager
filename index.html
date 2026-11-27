@@ -8036,6 +8036,13 @@ var VENDOR_STATUS = {
   paid: { label: '지급 완료', cls: 'green' }
 };
 var VENDOR_STATUS_ORDER = ['unpaid', 'billing', 'paid'];
+/* 첫 화면 기본값: 지급 완료는 숨기고 미지급·청구 진행중만 보여준다 */
+function vendorDefaultStatuses() { return ['unpaid', 'billing']; }
+function vendorIsDefaultStatus() {
+  var sel = vendorStatusSelected();
+  var d = vendorDefaultStatuses();
+  return sel.length === d.length && d.every(function (k) { return sel.indexOf(k) >= 0; });
+}
 
 function emptyVendor() { return { version: 1, items: [] }; }
 
@@ -8184,7 +8191,7 @@ function vendorById(id) { return byId(vendor.items, id); }
 
 /* ---------------- 목록 · 필터 ---------------- */
 function vendorFilterState() {
-  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
+  if (!ui.vendor || typeof ui.vendor !== 'object') ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses(), sort: '' };
   var f = ui.vendor;
   if (typeof f.q !== 'string') f.q = '';
   if (typeof f.project !== 'string') f.project = 'all';
@@ -8192,7 +8199,7 @@ function vendorFilterState() {
   if (f.sort !== 'rate-asc' && f.sort !== 'rate-desc') f.sort = '';
   /* 예전 단일 선택(status) 값이 남아 있으면 다중 선택 목록으로 옮긴다 */
   if (!Array.isArray(f.statuses)) {
-    f.statuses = (typeof f.status === 'string' && f.status !== 'all' && VENDOR_STATUS[f.status]) ? [f.status] : [];
+    f.statuses = (typeof f.status === 'string' && f.status !== 'all' && VENDOR_STATUS[f.status]) ? [f.status] : vendorDefaultStatuses();
     f.status = 'all';
   }
   f.statuses = f.statuses.filter(function (k, i, a) { return !!VENDOR_STATUS[k] && a.indexOf(k) === i; });
@@ -8318,8 +8325,9 @@ function vendorStatusChips() {
   var sel = vendorStatusSelected();
   var counts = vendorStatusCounts(vendorBaseList());
   var allOn = !sel.length;
+  var def = vendorIsDefaultStatus();
   var html = '<div class="vx-status">'
-    + '<span class="vx-status-label" id="vxStatusLabel">상태 필터 <em>' + (allOn ? '전체 보기' : sel.length + '개 선택') + '</em></span>'
+    + '<span class="vx-status-label" id="vxStatusLabel">상태 필터 <em>' + (allOn ? '전체 보기' : def ? '지급 완료 숨김' : sel.length + '개 선택') + '</em></span>'
     + '<div class="vx-chips" role="group" aria-labelledby="vxStatusLabel" aria-label="상태 필터 (여러 개 동시 선택)">'
     + '<button type="button" class="vx-chip all' + (allOn ? ' on' : '') + '" data-action="vendor-status-all" aria-pressed="' + (allOn ? 'true' : 'false') + '">전체 <span class="n">' + counts.all + '</span></button>';
   VENDOR_STATUS_ORDER.forEach(function (k) {
@@ -8353,7 +8361,9 @@ function vendorFilters() {
 function vendorTable(list) {
   if (!list.length) {
     var empty = vendor.items.length
-      ? '조건에 맞는 업체 결제 내역이 없습니다. 필터나 검색어를 바꿔 보세요.'
+      ? (vendorStatusSelected().length
+        ? '조건에 맞는 업체 결제 내역이 없습니다. <b>지급 완료</b> 건은 기본으로 숨겨져 있으니 상단 상태 필터에서 <b>지급 완료</b>를 눌러 확인해 보세요.'
+        : '조건에 맞는 업체 결제 내역이 없습니다. 필터나 검색어를 바꿔 보세요.')
       : '등록된 업체 결제 내역이 없습니다. [2026공사 데이터 불러오기]를 누르면 원본 시트의 ' + ((window.VENDOR_SEED && window.VENDOR_SEED.length) || 0) + '건이 한 번에 들어옵니다.';
     return '<div class="labor-empty" style="padding:38px 18px">' + empty + '</div>';
   }
@@ -8665,7 +8675,7 @@ function vendorDelete(id) {
   });
 }
 function vendorResetFilter() {
-  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses(), sort: '' };
   render();
 }
 /* 상태 칭 토글: 여러 개를 동시에 켜고 끌 수 있다 */
@@ -8691,7 +8701,7 @@ function vendorStatusAll() {
 /* ---------------- 원본 데이터 불러오기 ---------------- */
 function vendorApplyItems(items, label) {
   vendor.items = normalizeVendorItems(items);
-  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [], sort: '' };
+  ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses(), sort: '' };
   saveVendor(); render();
   toast((label || '데이터') + ' ' + vendor.items.length + '건을 불러왔습니다.');
 }
@@ -9239,7 +9249,7 @@ function resetAll() {
       ui.travelEditing = false;
       vendor = emptyVendor();
       try { window.localStorage.removeItem(VENDOR_KEY); } catch (e) { }
-      ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: [] };
+      ui.vendor = { q: '', project: 'all', vendor: 'all', statuses: vendorDefaultStatuses() };
       clearAllSel();
       ui.view = 'dashboard';
       render();
